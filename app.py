@@ -5720,6 +5720,7 @@ def report_accounting_monthly_excel():
     nc_total_row_des = None
     des_formula_cells = []
     family_total_refs = {}
+    family_total_values = {}
     configured_children_by_parent = {
         parent: [code for code in ACCOUNTING_FAMILY_ORDER if len(code) > 4 and code.startswith(parent)]
         for parent in configured_parent_codes
@@ -5795,12 +5796,12 @@ def report_accounting_monthly_excel():
                     cost_col,
                     f'=ROUND(SUM({cost_col_letter}{detail_start_row}:{cost_col_letter}{detail_end_row}),2)'
                 )
-                des_formula_cells.append(family_total_cell)
             else:
                 family_total_cell = ws_des.cell(des_row, cost_col, 0)
             family_total_cell.font = Font(bold=True)
             family_total_cell.number_format = '"$"#,##0.00'
             family_total_refs[fam_code] = f'DESGLOSE!${cost_col_letter}${des_row}'
+            family_total_values[fam_code] = round(fam_subtotal, 2)
             parent_total_refs.append(f'${cost_col_letter}${des_row}')
             des_row += 1
             subtotal += fam_subtotal
@@ -5812,7 +5813,6 @@ def report_accounting_monthly_excel():
                 cost_col,
                 f'=ROUND({"+".join(parent_total_refs)},2)'
             )
-            des_formula_cells.append(total_cell)
         else:
             total_cell = ws_des.cell(des_row, cost_col, 0)
         total_cell.font = Font(bold=True)
@@ -5861,12 +5861,12 @@ def report_accounting_monthly_excel():
                     cost_col,
                     f'=ROUND(SUM({cost_col_letter}{detail_start_row}:{cost_col_letter}{detail_end_row}),2)'
                 )
-                des_formula_cells.append(family_total_cell)
             else:
                 family_total_cell = ws_des.cell(des_row, cost_col, 0)
             family_total_cell.font = Font(bold=True)
             family_total_cell.number_format = '"$"#,##0.00'
             family_total_refs[fam_code] = f'DESGLOSE!${cost_col_letter}${des_row}'
+            family_total_values[fam_code] = round(fam_subtotal, 2)
             nc_total_refs.append(f'${cost_col_letter}${des_row}')
             des_row += 1
             nc_subtotal += fam_subtotal
@@ -5878,7 +5878,6 @@ def report_accounting_monthly_excel():
                 cost_col,
                 f'=ROUND({"+".join(nc_total_refs)},2)'
             )
-            des_formula_cells.append(total_cell)
         else:
             total_cell = ws_des.cell(des_row, cost_col, 0)
         total_cell.font = Font(bold=True)
@@ -5922,7 +5921,6 @@ def report_accounting_monthly_excel():
 
     info_row = 6
     parent_rows_written = []
-    inf_formula_cells = []
 
     def refs_for_prefix(prefix):
         return [
@@ -5952,7 +5950,6 @@ def report_accounting_monthly_excel():
         ws_inf.cell(info_row, 3).font = Font(bold=True)
         ws_inf.cell(info_row, 4).font = Font(bold=True)
         parent_value_cell.font = Font(bold=True)
-        inf_formula_cells.append(parent_value_cell)
         parent_rows_written.append(parent_row)
         info_row += 1
 
@@ -5964,7 +5961,6 @@ def report_accounting_monthly_excel():
             child_formula = '+'.join(formula_refs) if formula_refs else '0'
             child_value_cell = ws_inf.cell(info_row, 5, f'=ROUND({child_formula},2)')
             child_value_cell.number_format = '"$"#,##0.00'
-            inf_formula_cells.append(child_value_cell)
             info_row += 1
 
     # Primer subtotal (solo familias inventariadas)
@@ -5975,7 +5971,6 @@ def report_accounting_monthly_excel():
     if subtotal_refs:
         subtotal_formula = '+'.join(subtotal_refs)
         subtotal_cell = ws_inf.cell(31, 5, f'={subtotal_formula}')
-        inf_formula_cells.append(subtotal_cell)
     else:
         subtotal_cell = ws_inf.cell(31, 5, 0)
     subtotal_cell.font = Font(bold=True)
@@ -6022,21 +6017,10 @@ def report_accounting_monthly_excel():
     for r in [34, 35, 36, 38, 41]:
         ws_inf.cell(r, 5, '')
 
-    # Ocultar formulas en barra de formula y permitir solo edicion de valores de detalle en DESGLOSE.
-    # Excel solo oculta formulas cuando la hoja esta protegida y la celda esta "hidden".
-    max_des_edit_col = len(columns_order)
-    for r in range(1, ws_des.max_row + 1):
-        for c in range(1, max_des_edit_col + 1):
-            cell = ws_des.cell(r, c)
-            cell.protection = Protection(locked=False, hidden=False)
-    for cell in des_formula_cells:
-        cell.protection = Protection(locked=True, hidden=True)
-    ws_des.protection.sheet = True
-
-    for cell in inf_formula_cells:
-        cell.protection = Protection(locked=True, hidden=True)
-    ws_inf.protection.sheet = True
-    ws_base.protection.sheet = True
+    # Sin proteccion de hojas: el usuario puede editar libremente.
+    ws_des.protection.sheet = False
+    ws_inf.protection.sheet = False
+    ws_base.protection.sheet = False
 
     wb.calculation.fullCalcOnLoad = True
     wb.calculation.calcMode = 'auto'
