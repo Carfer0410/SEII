@@ -940,6 +940,12 @@ def novedades_page():
     return render_template('novedades.html')
 
 
+@app.route('/hoja_vida')
+def hoja_vida_page():
+    ensure_db()
+    return render_template('hoja_vida.html')
+
+
 @app.route('/logo')
 def logo_file():
     logo_path = os.path.join(BASE_DIR, 'logo.png')
@@ -5513,6 +5519,198 @@ def asset_raw_payload(asset):
         'SALDO': to_number(asset.saldo),
         'FECHA_COMPRA': asset.fecha_compra or '',
     }
+
+
+def _pick_first_value(payload, keys):
+    for key in keys:
+        val = payload.get(key)
+        if val is None:
+            continue
+        txt = str(val).strip()
+        if txt:
+            return txt
+    return ''
+
+
+def build_asset_life_sheet_payload(asset, matched_by='C_ACT'):
+    payload = asset_raw_payload(asset)
+    codigo_inteligente = _pick_first_value(payload, [
+        'CODINTELIGENTE', 'CODIGO_INTELIGENTE', 'COD_INTELIGENTE', 'CODIGO INTELIGENTE'
+    ])
+    subtipo_codigo = _pick_first_value(payload, [
+        'SUBTIPO', 'SUBTIPO_ACTIVO', 'COD_SUBTIPO', 'COD_SUBTIPO_ACTIVO'
+    ])
+    subtipo_nombre = _pick_first_value(payload, [
+        'DES_SUBTIAC', 'DESC_SUBTIAC', 'SUBTIPO_ACTIVO', 'DESC_SUBTIPO_ACTIVO'
+    ]) or (asset.desc_subtiac or '')
+
+    data = {
+        'codigo': asset.c_act or '',
+        'codigo_inteligente': codigo_inteligente,
+        'descripcion_activo': asset.nom or '',
+        'familia_codigo': asset.c_fam or '',
+        'familia_nombre': asset.nom_fam or '',
+        'tipo_codigo': asset.c_tiac or '',
+        'tipo_nombre': asset.desc_tiac or '',
+        'subtipo_codigo': subtipo_codigo,
+        'subtipo_nombre': subtipo_nombre,
+        'marca': asset.nom_marca or '',
+        'modelo': asset.modelo or '',
+        'serial_referencia': asset.serie or asset.ref or '',
+        'color': _pick_first_value(payload, ['COLOR', 'COLORES']),
+        'nit_proveedor': _pick_first_value(payload, ['NIT_PROVEEDOR', 'NIT PROVEEDOR', 'NIT']),
+        'proveedor': _pick_first_value(payload, ['PROVEEDOR', 'DESCRIPCION_PROVEEDOR', 'DESCRIPCION DEL PROVEEDOR']),
+        'fecha_incorporacion': date_only(asset.fecha_compra),
+        'forma_adquisicion': _pick_first_value(payload, ['FORMA_ADQUISICION', 'FORMA DE ADQUISICION', 'ADQUISICION']),
+        'en_garantia': _pick_first_value(payload, ['EN_GARANTIA', 'GARANTIA']) or 'No',
+        'entidad': _pick_first_value(payload, ['ENTIDAD']),
+        'garantia_desde': _pick_first_value(payload, ['GARANTIA_DESDE', 'DESDE']),
+        'garantia_hasta': _pick_first_value(payload, ['GARANTIA_HASTA', 'HASTA']),
+        'estado': asset.est or '',
+        'condicion': _pick_first_value(payload, ['CONDICION']) or (asset.estado_inventario or ''),
+        'metodo_deprec': asset.deprecia or '',
+        'costo_activo': round(to_number(asset.costo), 2),
+        'saldo': round(to_number(asset.saldo), 2),
+        'total_activo': round(to_number(asset.costo), 2),
+        'responsable': asset.nom_resp or '',
+        'ubicacion': asset.des_ubi or '',
+        'centro_costo': _pick_first_value(payload, ['C_CCOS', 'CENTRO_COSTO', 'COD_CENTRO_COSTO']),
+        'servicio': asset.nom_ccos or '',
+        'agencia': _pick_first_value(payload, ['AGENCIA']),
+        'area': classify_area(asset.nom_ccos),
+        'observaciones': asset.observacion_inventario or _pick_first_value(payload, ['OBSERVACIONES', 'OBSERVACION']) or '',
+        'matched_by': matched_by or 'C_ACT',
+        'fecha_generacion': format_dt_local(now_iso()),
+    }
+    return data
+
+
+@app.route('/asset_life_sheet', methods=['GET'])
+def asset_life_sheet():
+    ensure_db()
+    code = (request.args.get('code') or '').strip()
+    if not code:
+        return jsonify({'error': 'Debes indicar el codigo del activo'}), 400
+    asset, matched_by = get_asset_by_code(code)
+    if not asset:
+        return jsonify({'error': 'Activo no encontrado'}), 404
+    return jsonify({'item': build_asset_life_sheet_payload(asset, matched_by)})
+
+
+@app.route('/asset_life_sheet/pdf', methods=['GET'])
+def asset_life_sheet_pdf():
+    ensure_db()
+    code = (request.args.get('code') or '').strip()
+    if not code:
+        return jsonify({'error': 'Debes indicar el codigo del activo'}), 400
+    asset, matched_by = get_asset_by_code(code)
+    if not asset:
+        return jsonify({'error': 'Activo no encontrado'}), 404
+
+    item = build_asset_life_sheet_payload(asset, matched_by)
+    out = BytesIO()
+    doc = SimpleDocTemplate(
+        out,
+        pagesize=letter,
+        leftMargin=12 * mm,
+        rightMargin=12 * mm,
+        topMargin=12 * mm,
+        bottomMargin=12 * mm,
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'LifeTitle',
+        parent=styles['Heading1'],
+        fontName='Helvetica-Bold',
+        fontSize=16,
+        textColor=colors.HexColor('#0A5C8D'),
+        alignment=1,
+        spaceAfter=6,
+    )
+    small_style = ParagraphStyle(
+        'LifeSmall',
+        parent=styles['Normal'],
+        fontSize=9,
+        textColor=colors.HexColor('#405569'),
+        alignment=1,
+        spaceAfter=6,
+    )
+    label_style = ParagraphStyle(
+        'LifeLabel',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=colors.HexColor('#0F4E75'),
+        fontName='Helvetica-Bold',
+    )
+    value_style = ParagraphStyle(
+        'LifeValue',
+        parent=styles['Normal'],
+        fontSize=9,
+        textColor=colors.HexColor('#12212F'),
+    )
+
+    def row(label, value):
+        return [
+            Paragraph(escape(str(label or '')), label_style),
+            Paragraph(escape(str(value or '-')), value_style),
+        ]
+
+    story = [
+        Paragraph('HOJA DE VIDA DE ACTIVOS', title_style),
+        Paragraph(
+            f"Generado: {escape(item['fecha_generacion'])} | Codigo consultado: {escape(str(code))}",
+            small_style
+        ),
+    ]
+
+    table_rows = [
+        row('Codigo', item['codigo']),
+        row('Codigo inteligente', item['codigo_inteligente']),
+        row('Descripcion activo fijo', item['descripcion_activo']),
+        row('Familia', f"{item['familia_codigo']} - {item['familia_nombre']}"),
+        row('Tipo de activo', f"{item['tipo_codigo']} - {item['tipo_nombre']}"),
+        row('Subtipo de activo', f"{item['subtipo_codigo']} - {item['subtipo_nombre']}"),
+        row('Marca / Modelo', f"{item['marca']} / {item['modelo']}"),
+        row('No. serial o referencia', item['serial_referencia']),
+        row('Color', item['color']),
+        row('NIT proveedor', item['nit_proveedor']),
+        row('Descripcion del proveedor', item['proveedor']),
+        row('Fecha incorporacion', item['fecha_incorporacion']),
+        row('Forma de adquisicion', item['forma_adquisicion']),
+        row('En garantia', item['en_garantia']),
+        row('Entidad garantia', item['entidad']),
+        row('Garantia desde / hasta', f"{item['garantia_desde']} / {item['garantia_hasta']}"),
+        row('Estado', item['estado']),
+        row('Condicion', item['condicion']),
+        row('Metodo depreciacion', item['metodo_deprec']),
+        row('Costo del activo', money_text(item['costo_activo'])),
+        row('Saldo', money_text(item['saldo'])),
+        row('Total activo', money_text(item['total_activo'])),
+        row('Responsable', item['responsable']),
+        row('Ubicacion', item['ubicacion']),
+        row('Centro de costo', item['centro_costo']),
+        row('Servicio', item['servicio']),
+        row('Agencia', item['agencia']),
+        row('Area', item['area']),
+        row('Observaciones', item['observaciones']),
+    ]
+    detail = Table(table_rows, colWidths=[52 * mm, 128 * mm])
+    detail.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F7FBFF')),
+        ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.HexColor('#EEF5FC'), colors.HexColor('#FFFFFF')]),
+        ('BOX', (0, 0), (-1, -1), 0.6, colors.HexColor('#BFD3E3')),
+        ('GRID', (0, 0), (-1, -1), 0.35, colors.HexColor('#D3E1ED')),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    story.append(detail)
+    doc.build(story)
+    out.seek(0)
+    filename = clean_filename(f"hoja_vida_{asset.c_act}.pdf")
+    return send_file(out, as_attachment=True, download_name=filename, mimetype='application/pdf')
 
 
 def write_headers_row(ws, row_idx, columns):

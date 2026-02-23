@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% set title = "Hoja de vida de activos" %}
+{% set subtitle = "Consulta institucional de ficha tecnica por codigo de activo o lectura de codigo de barras." %}
+
+{% block content %}
+  <div class="stack module-screen">
+    <div class="card report-hero">
+      <div>
+        <h3>Generador de hoja de vida</h3>
+        <p>Escribe o escanea el codigo del activo para visualizar su ficha y generar PDF institucional.</p>
+      </div>
+      <div class="hero-badges">
+        <span class="badge">Consulta por codigo</span>
+        <span class="badge">Compatible con lector</span>
+        <span class="badge">Exportacion PDF</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Busqueda de activo</h3>
+      <div class="row life-row">
+        <input id="lifeCodeInput" placeholder="Codigo de activo (ej. 6007005 o codigo de barras)" />
+        <button id="lifeSearchBtn" type="button">Buscar activo</button>
+        <button id="lifePdfBtn" type="button" class="mini-btn" disabled>Descargar PDF</button>
+      </div>
+      <div id="lifeStatus" class="status"></div>
+    </div>
+
+    <div class="card">
+      <h3>Vista previa hoja de vida</h3>
+      <div id="lifeSheetPreview" class="life-sheet-empty">
+        Ingresa un codigo para consultar la hoja de vida del activo.
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='hoja_vida.js') }}"></script>
+{% endblock %}
+

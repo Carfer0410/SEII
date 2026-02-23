@@ -25,6 +25,7 @@
         <a class="{{ 'active' if request.path == '/inventario' else '' }}" href="{{ url_for('inventario_page') }}">Inventario y escaneo</a>
         <a class="{{ 'active' if request.path == '/bajas' else '' }}" href="{{ url_for('bajas_page') }}">Bajas</a>
         <a class="{{ 'active' if request.path == '/informes' else '' }}" href="{{ url_for('informes_page') }}">Informes</a>
+        <a class="{{ 'active' if request.path == '/hoja_vida' else '' }}" href="{{ url_for('hoja_vida_page') }}">Hoja de vida</a>
         <a class="{{ 'active' if request.path == '/novedades' else '' }}" href="{{ url_for('novedades_page') }}">Novedades</a>
         <a class="{{ 'active' if request.path == '/dashboard' else '' }}" href="{{ url_for('dashboard_page') }}">Dashboard</a>
       </nav>

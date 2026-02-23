@@ -2386,6 +2386,73 @@ tbody tr:hover {
   padding: 8px 10px;
 }
 
+.life-row input {
+  flex: 1 1 380px;
+}
+
+.life-sheet-empty {
+  min-height: 120px;
+  border: 1px dashed #bcd6e8;
+  border-radius: 12px;
+  background: #f7fbff;
+  color: #365a74;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  font-weight: 600;
+  padding: 12px;
+}
+
+.life-sheet {
+  border: 1px solid #c4d9ea;
+  border-radius: 12px;
+  background: linear-gradient(155deg, #f5fbff 0%, #edf6fd 100%);
+  overflow: hidden;
+}
+
+.life-sheet-head {
+  padding: 10px 12px;
+  border-bottom: 1px solid #c8dced;
+  background: linear-gradient(120deg, #0b5d8f, #1a7cae);
+  color: #fff;
+}
+
+.life-sheet-head h4 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+
+.life-sheet-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  text-align: center;
+  color: #e9f4fb;
+}
+
+.life-grid {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+
+.life-cell {
+  padding: 7px 10px;
+  border-bottom: 1px solid #d6e5f1;
+}
+
+.life-label {
+  font-weight: 800;
+  color: #0f4e75;
+  background: #e7f1fa;
+  border-right: 1px solid #d6e5f1;
+}
+
+.life-value {
+  background: #fff;
+  color: #1b3347;
+}
+
 @media (max-width: 900px) {
   .kpi-grid-exec {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2395,6 +2462,15 @@ tbody tr:hover {
 @media (max-width: 640px) {
   .kpi-grid-exec {
     grid-template-columns: 1fr;
+  }
+
+  .life-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .life-label {
+    border-right: none;
+    border-bottom: 1px solid #d6e5f1;
   }
 }
 
