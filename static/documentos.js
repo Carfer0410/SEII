@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
+﻿document.addEventListener('DOMContentLoaded', () => {
   const linkTypeEl = document.getElementById('docLinkType');
   const assetCodeEl = document.getElementById('docAssetCode');
   const assetNameEl = document.getElementById('docAssetName');
@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let docsPage = 1;
   let docsPageSize = 10;
   let editOverlay = null;
+  let noticeOverlay = null;
   let searchDebounce = null;
 
   function formatSize(bytes) {
@@ -146,6 +147,69 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function ensureNoticeModal() {
+    if (noticeOverlay) return noticeOverlay;
+    noticeOverlay = document.createElement('div');
+    noticeOverlay.className = 'app-confirm-overlay docs-notice-overlay';
+    noticeOverlay.hidden = true;
+    noticeOverlay.innerHTML = `
+      <div class="app-confirm-card docs-notice-card" role="dialog" aria-modal="true" aria-labelledby="docsNoticeTitle">
+        <div class="app-confirm-head">
+          <h4 id="docsNoticeTitle"></h4>
+        </div>
+        <div class="app-confirm-body">
+          <p id="docsNoticeMessage" class="docs-notice-message"></p>
+        </div>
+        <div class="app-confirm-actions">
+          <button id="docsNoticeCancel" type="button" class="mini-btn app-confirm-cancel">Cancelar</button>
+          <button id="docsNoticeOk" type="button" class="mini-btn app-confirm-ok">Aceptar</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(noticeOverlay);
+    return noticeOverlay;
+  }
+
+  function showNoticeModal({ title, message, okText = 'Aceptar', cancelText = 'Cancelar', showCancel = false }) {
+    return new Promise((resolve) => {
+      const overlay = ensureNoticeModal();
+      const titleEl = overlay.querySelector('#docsNoticeTitle');
+      const messageEl = overlay.querySelector('#docsNoticeMessage');
+      const cancelBtn = overlay.querySelector('#docsNoticeCancel');
+      const okBtn = overlay.querySelector('#docsNoticeOk');
+
+      titleEl.textContent = String(title || '').trim() || 'Confirmacion';
+      messageEl.textContent = String(message || '').trim();
+      okBtn.textContent = okText;
+      cancelBtn.textContent = cancelText;
+      cancelBtn.hidden = !showCancel;
+
+      const close = (accepted) => {
+        overlay.hidden = true;
+        overlay.removeEventListener('click', onOverlayClick);
+        document.removeEventListener('keydown', onKeyDown);
+        cancelBtn.removeEventListener('click', onCancel);
+        okBtn.removeEventListener('click', onOk);
+        resolve(accepted);
+      };
+      const onCancel = () => close(false);
+      const onOk = () => close(true);
+      const onOverlayClick = (e) => {
+        if (e.target === overlay) close(false);
+      };
+      const onKeyDown = (e) => {
+        if (e.key === 'Escape') close(false);
+      };
+
+      overlay.hidden = false;
+      cancelBtn.addEventListener('click', onCancel);
+      okBtn.addEventListener('click', onOk);
+      overlay.addEventListener('click', onOverlayClick);
+      document.addEventListener('keydown', onKeyDown);
+      setTimeout(() => okBtn.focus({ preventScroll: true }), 0);
+    });
+  }
+
   function renderTable(items) {
     if (!tableWrapEl) return;
     if (!items.length) {
@@ -191,7 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${App.escapeHtml(App.formatDateTime(r.uploaded_at_local || r.uploaded_at || ''))}</td>
                 <td class="cell-clip" title="${App.escapeHtml(r.file_name || '')}">
                   ${App.escapeHtml(r.file_name || '')}<br/>
-                  <span class="file-meta">${App.escapeHtml(String((r.file_ext || '').toUpperCase()))} · ${formatSize(r.file_size)}</span>
+                  <span class="file-meta">${App.escapeHtml(String((r.file_ext || '').toUpperCase()))} Â· ${formatSize(r.file_size)}</span>
                 </td>
                 <td>
                   <button class="mini-btn" type="button" data-doc-download="${r.id}">Descargar</button>
@@ -318,7 +382,7 @@ document.addEventListener('DOMContentLoaded', () => {
       .catch((err) => App.setStatus(statusEl, err.message, true));
   });
 
-  tableWrapEl?.addEventListener('click', (e) => {
+  tableWrapEl?.addEventListener('click', async (e) => {
     const btn = e.target.closest('button[data-doc-download]');
     if (btn) {
       const id = Number(btn.getAttribute('data-doc-download') || 0);
@@ -344,6 +408,14 @@ document.addEventListener('DOMContentLoaded', () => {
             App.setStatus(statusEl, 'Debes seleccionar tipo de documento.', true);
             return;
           }
+          const confirmEdit = await showNoticeModal({
+            title: 'Confirmar edicion',
+            message: `Vas a guardar cambios del documento "${item.title || `#${id}`}".`,
+            okText: 'Guardar',
+            cancelText: 'Cancelar',
+            showCancel: true,
+          });
+          if (!confirmEdit) return;
           const res = await fetch(`/documents/${id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -353,6 +425,11 @@ document.addEventListener('DOMContentLoaded', () => {
           if (!res.ok) throw new Error(body.error || `Error HTTP ${res.status}`);
           App.setStatus(statusEl, `Documento ${id} actualizado.`);
           await loadDocuments();
+          await showNoticeModal({
+            title: 'Edicion completada',
+            message: 'El documento se actualizo correctamente.',
+            okText: 'Entendido',
+          });
         })
         .catch((err) => App.setStatus(statusEl, err.message, true));
       return;
@@ -381,7 +458,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!id) return;
       const item = currentItems.find((x) => Number(x.id) === id);
       const label = item?.title || `Documento ${id}`;
-      const ok = window.confirm(`¿Seguro que deseas archivar "${label}"?`);
+      const ok = await showNoticeModal({
+        title: 'Archivar documento',
+        message: `Seguro que deseas archivar "${label}"?`,
+        okText: 'Archivar',
+        cancelText: 'Cancelar',
+        showCancel: true,
+      });
       if (!ok) return;
       fetch(`/documents/${id}/archive`, { method: 'POST' })
         .then(async (res) => {
@@ -389,7 +472,12 @@ document.addEventListener('DOMContentLoaded', () => {
           if (!res.ok) throw new Error(payload.error || `Error HTTP ${res.status}`);
           App.setStatus(statusEl, `Documento ${id} archivado.`);
           docsPage = 1;
-          return loadDocuments();
+          await loadDocuments();
+          await showNoticeModal({
+            title: 'Documento archivado',
+            message: 'El documento fue archivado correctamente.',
+            okText: 'Aceptar',
+          });
         })
         .catch((err) => App.setStatus(statusEl, err.message, true));
     }

@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --bg: #f3f7fb;
   --card: #ffffff;
   --text: #17212f;
@@ -2644,8 +2644,14 @@ tbody tr:hover {
 .docs-table td:nth-child(2),
 .docs-table td:nth-child(4),
 .docs-table td:nth-child(7),
-.docs-table td:nth-child(8),
+.docs-table td:nth-child(8) {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.docs-table th:nth-child(10),
 .docs-table td:nth-child(10) {
+  width: 196px;
   text-align: center;
   white-space: nowrap;
 }
@@ -2679,8 +2685,32 @@ tbody tr:hover {
   box-sizing: border-box;
 }
 
+.docs-table td:last-child {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
 .docs-table td:last-child .mini-btn {
-  margin: 2px 2px;
+  margin: 0;
+  min-width: 58px;
+  max-width: 58px;
+  height: 26px;
+  padding: 0 4px;
+  font-size: 9px;
+}
+
+.docs-notice-card {
+  max-width: 520px;
+}
+
+.docs-notice-message {
+  margin: 0;
+  color: #2a4e67;
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .docs-archive-btn {
@@ -2832,3 +2862,4 @@ tbody tr:hover {
   font-size: 11px;
   border-radius: 8px;
 }
+
