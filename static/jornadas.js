@@ -254,6 +254,29 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  function isBlockingWorkflowMessage(message) {
+    const txt = String(message || "").toLowerCase();
+    if (!txt) return false;
+    return (
+      txt.includes("no puedes") ||
+      txt.includes("trazabilidad de escaneo") ||
+      txt.includes("jornadas activas") ||
+      txt.includes("novedades registradas") ||
+      txt.includes("bajas asociadas") ||
+      txt.includes("sin jornadas registradas") ||
+      txt.includes("periodo con jornadas activas")
+    );
+  }
+
+  async function showBlockingModal(message, title = "Accion no permitida") {
+    await showConfirmModal({
+      title,
+      message: String(message || "No fue posible completar la accion solicitada."),
+      okText: "Aceptar",
+      cancelText: "",
+    });
+  }
+
   function selectedServices() {
     return allServices.filter((svc) => selectedServiceSet.has(svc));
   }
@@ -653,6 +676,9 @@ document.addEventListener("DOMContentLoaded", () => {
       App.setStatus(statusEl, "Periodo cerrado");
     } catch (err) {
       App.setStatus(statusEl, err.message, true);
+      if (isBlockingWorkflowMessage(err.message)) {
+        await showBlockingModal(err.message, "No se pudo cerrar el periodo");
+      }
     }
   });
 
@@ -682,6 +708,9 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     } catch (err) {
       App.setStatus(statusEl, err.message, true);
+      if (isBlockingWorkflowMessage(err.message)) {
+        await showBlockingModal(err.message, "No se pudo anular el periodo");
+      }
     }
   });
 
@@ -716,6 +745,9 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     } catch (err) {
       App.setStatus(statusEl, err.message, true);
+      if (isBlockingWorkflowMessage(err.message)) {
+        await showBlockingModal(err.message, "No se pudo cerrar la jornada");
+      }
     }
   });
 
@@ -741,6 +773,9 @@ document.addEventListener("DOMContentLoaded", () => {
       App.setStatus(statusEl, `Jornada anulada correctamente: ${runLabel}`);
     } catch (err) {
       App.setStatus(statusEl, err.message, true);
+      if (isBlockingWorkflowMessage(err.message)) {
+        await showBlockingModal(err.message, "No se pudo anular la jornada");
+      }
     }
   });
 
