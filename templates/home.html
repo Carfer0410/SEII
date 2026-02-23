@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% set title = "Panel principal" %}
+{% set subtitle = "Plataforma institucional para control de inventario, jornadas, bajas y reporte gerencial." %}
+
+{% block content %}
+  <div class="stack home-screen">
+    <section class="card home-hero">
+      <div class="home-hero-head">
+        <div>
+          <h3>SEII · Sistema Especializado de Inventario Institucional</h3>
+          <p class="home-lead">
+            Solucion operativa para ejecutar inventario fisico hospitalario con trazabilidad por periodo, jornada y servicio.
+          </p>
+        </div>
+        <div class="home-hero-badges">
+          <span class="badge">Trazabilidad institucional</span>
+          <span class="badge">Lectura por codigo de barras</span>
+          <span class="badge">Control de bajas</span>
+          <span class="badge">Reporte gerencial</span>
+        </div>
+      </div>
+      <div class="home-highlight-grid">
+        <div class="home-highlight">
+          <div class="home-highlight-title">Objetivo</div>
+          <div class="home-highlight-text">Reducir tiempos de inventario y elevar confiabilidad del dato institucional.</div>
+        </div>
+        <div class="home-highlight">
+          <div class="home-highlight-title">Cobertura</div>
+          <div class="home-highlight-text">Activos biomedicos, industriales, tecnologicos, muebles y enseres.</div>
+        </div>
+        <div class="home-highlight">
+          <div class="home-highlight-title">Resultado</div>
+          <div class="home-highlight-text">Decisiones directivas con evidencia y reportes listos para comite.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid-2 home-modules">
+      <a class="card card-link module-card" href="{{ url_for('jornadas_page') }}">
+        <h3>Jornadas</h3>
+        <p>Importa base oficial, configura periodos y controla jornadas activas/cerradas.</p>
+        <span class="module-cta">Abrir modulo</span>
+      </a>
+      <a class="card card-link module-card" href="{{ url_for('inventario_page') }}">
+        <h3>Inventario y escaneo</h3>
+        <p>Ejecuta inventario fisico en tiempo real con lector de barras y conciliacion operativa.</p>
+        <span class="module-cta">Abrir modulo</span>
+      </a>
+      <a class="card card-link module-card" href="{{ url_for('bajas_page') }}">
+        <h3>Bajas pendientes</h3>
+        <p>Gestiona solicitudes de baja por tipo de activo, estado y reportes de control.</p>
+        <span class="module-cta">Abrir modulo</span>
+      </a>
+      <a class="card card-link module-card" href="{{ url_for('dashboard_page') }}">
+        <h3>Dashboard gerencial</h3>
+        <p>Visualiza KPI, comparativos por periodo y exporta informe ejecutivo para alta direccion.</p>
+        <span class="module-cta">Abrir modulo</span>
+      </a>
+    </section>
+
+    <section class="card home-flow">
+      <h3>Flujo operativo institucional</h3>
+      <div class="home-flow-grid">
+        <div class="flow-step">
+          <div class="flow-num">01</div>
+          <div class="flow-title">Cargar base oficial</div>
+          <div class="flow-text">Ingreso de datos fuente del sistema institucional.</div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">02</div>
+          <div class="flow-title">Planificar periodos y jornadas</div>
+          <div class="flow-text">Organizacion por corte semestral, aleatorio o especial.</div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">03</div>
+          <div class="flow-title">Inventario fisico y conciliacion</div>
+          <div class="flow-text">Actualizacion de encontrados, no encontrados y pendientes.</div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">04</div>
+          <div class="flow-title">Reporte y cierre de gestion</div>
+          <div class="flow-text">Documentacion A22, control de bajas e informe gerencial.</div>
+        </div>
+      </div>
+    </section>
+  </div>
+{% endblock %}

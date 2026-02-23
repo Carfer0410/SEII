@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% set title = "Cronograma" %}
+{% set subtitle = "Planea y monitorea el avance del inventario por periodo y por servicio." %}
+
+{% block content %}
+  <div class="stack">
+    <div class="card report-hero">
+      <h3>Control de avance</h3>
+      <p>Consulta en tiempo real que servicios ya fueron inventariados y cuales faltan por gestionar en el periodo seleccionado.</p>
+      <div class="hero-badges">
+        <span class="badge">Cobertura por periodo</span>
+        <span class="badge">Servicios inventariados</span>
+        <span class="badge">Jornadas del periodo</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Filtro de periodo</h3>
+      <div class="row">
+        <select id="cronPeriodSelect"><option value="">-- Selecciona periodo --</option></select>
+        <button id="cronRefreshBtn" type="button">Actualizar</button>
+      </div>
+      <div id="cronStatus" class="status"></div>
+    </div>
+
+    <div class="card">
+      <h3>Avance de inventario por servicios</h3>
+      <div class="jour-progress-kpis" id="cronServicesKpis"></div>
+      <div class="jour-progress-bar-wrap">
+        <div class="jour-progress-bar-fill" id="cronServicesBar"></div>
+      </div>
+      <div id="cronServicesMeta" class="field-help"></div>
+      <div id="cronServicesTable"></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>Servicios pendientes</h3>
+        <div id="cronPendingServices"></div>
+      </div>
+      <div class="card">
+        <h3>Jornadas del periodo</h3>
+        <div id="cronRunsTable"></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>Recomendado iniciar por</h3>
+        <div id="cronRecommendations"></div>
+      </div>
+      <div class="card">
+        <h3>Plan operativo sugerido</h3>
+        <div id="cronOperationalPlan"></div>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='cronograma.js') }}"></script>
+{% endblock %}

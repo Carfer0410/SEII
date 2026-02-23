@@ -1,0 +1,4 @@
+C_ACT,NOM,MODELO,REF,SERIE,NOM_MARCA,C_TIAC,DESC_TIAC,DES_UBI,NOM_CCOS,NOM_RESP,EST,COSTO,SALDO,FECHA_COMPRA
+ACT001,Monitor de signos,ModA,Ref1,SER001,MarcaX,6007,Monitor,Urgencias,Dirección de Tecnología,Luis Fernando,a,12000,8000,2018-05-10
+ACT002,Cama hospitalaria,ModB,Ref2,SER002,MarcaY,7010,Cama,Hospitalización,Dirección de Tecnología,Maria Lopez,a,5000,3000,2016-03-12
+ACT003,ECG portátil,ModC,Ref3,SER003,MarcaZ,6007,ECG,Consulta Externa,Dirección de Tecnología,Juan Perez,a,9000,6000,2019-08-20

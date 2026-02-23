@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% set title = "Inventario y escaneo" %}
+{% set subtitle = "Consulta, escaneo y validacion de activos en tiempo real." %}
+
+{% block content %}
+  <div class="stack inv-screen">
+    <div class="card inv-hero">
+      <h3>Operacion de inventario</h3>
+      <div class="hero-badges">
+        <span class="badge">Contexto operativo</span>
+        <span class="badge">Escaneo</span>
+        <span class="badge">Conciliacion</span>
+        <span class="badge">Exportacion</span>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <button id="startGuideBtn" type="button">Ver guia rapida</button>
+      </div>
+      <p class="field-help">
+        Modulo operativo para inventario fisico por jornada. Si no hay jornada activa, el escaneo permanece bloqueado.
+      </p>
+      <div class="inv-operational-strip">
+        <span id="opPeriod" class="op-pill">Periodo: -</span>
+        <span id="opRun" class="op-pill">Jornada: -</span>
+        <span id="opService" class="op-pill">Servicio: TODOS</span>
+        <span id="opLastScan" class="op-pill">Ultimo escaneo: -</span>
+      </div>
+      <div class="inv-hints-box">
+        <div class="inv-hints-title">Recomendaciones operativas</div>
+        <div id="workflowHints" class="inv-hints-list"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Contexto de trabajo</h3>
+      <div class="inv-two-cols">
+        <div class="inv-block">
+          <label for="periodSelect">Periodo de inventario</label>
+          <select id="periodSelect"><option value="">-- Selecciona periodo --</option></select>
+          <label for="serviceSelect">Servicio (filtro operativo)</label>
+          <div class="row">
+            <select id="serviceSelect"><option value="">-- Todos los servicios --</option></select>
+            <button id="refreshBtn" type="button">Actualizar vista</button>
+          </div>
+          <div class="field-help">
+            El filtro de servicio solo afecta la vista y exportes operativos de esta pantalla.
+          </div>
+          <div class="run-banner">
+            <div id="activeRunBannerText" class="run-banner-text">Consultando jornada activa...</div>
+            <a class="run-banner-link" href="{{ url_for('jornadas_page') }}">Ir a Jornadas</a>
+          </div>
+        </div>
+        <div class="inv-block">
+          <label>Base general de activos</label>
+          <div class="field-help">
+            La base se importa desde el modulo <strong>Jornadas</strong> como paso inicial del proceso.
+          </div>
+          <div class="row">
+            <a class="run-banner-link" href="{{ url_for('jornadas_page') }}">Ir a importar base</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Escaneo</h3>
+      <div class="inv-two-cols">
+        <div class="inv-block">
+          <label for="scanInput">Escaner / pistola de codigo de barras</label>
+          <input id="scanInput" placeholder="Escanea codigo de barras (procesa automatico)" />
+          <div class="field-help">
+            El sistema procesa automaticamente al detectar el codigo completo.
+          </div>
+        </div>
+        <div class="inv-block">
+          <label>Camara (alternativa)</label>
+          <div id="reader" style="width: 320px"></div>
+          <div class="row">
+            <button id="startCamera" type="button">Iniciar camara</button>
+            <button id="stopCamera" type="button">Detener camara</button>
+          </div>
+        </div>
+      </div>
+      <div id="scanStatus" class="status"></div>
+    </div>
+
+    <div class="card">
+      <h3>Verificacion en tiempo real</h3>
+      <div class="kpi-grid inv-kpis">
+        <div class="kpi-box">
+          <div class="kpi-label">Total</div>
+          <div id="kpiTotalAssets" class="kpi-value">0</div>
+        </div>
+        <div class="kpi-box kpi-ok">
+          <div class="kpi-label">Encontrados</div>
+          <div id="kpiFoundAssets" class="kpi-value">0</div>
+        </div>
+        <div class="kpi-box kpi-bad">
+          <div class="kpi-label">No encontrados</div>
+          <div id="kpiNotFoundAssets" class="kpi-value">0</div>
+        </div>
+        <div class="kpi-box kpi-warn">
+          <div class="kpi-label">Pendientes</div>
+          <div id="kpiPendingAssets" class="kpi-value">0</div>
+        </div>
+      </div>
+      <div class="split-grid">
+        <div class="mini-card">
+          <h4>Encontrados</h4>
+          <div id="foundAssetsContainer"></div>
+        </div>
+        <div class="mini-card">
+          <h4>No encontrados</h4>
+          <div id="notFoundAssetsContainer"></div>
+        </div>
+      </div>
+      <div class="mini-card">
+        <h4>Pendientes</h4>
+        <div id="pendingAssetsContainer"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Activos del contexto seleccionado</h3>
+      <div class="field-help">
+        Clasifica solo estados operativos diferentes a encontrado/no encontrado. Esos dos estados los gestiona la jornada.
+      </div>
+      <div id="assetsContainer"></div>
+    </div>
+
+    <div class="card">
+      <h3>Exportacion operativa</h3>
+      <div class="field-help">
+        Estos reportes respetan el periodo y la jornada activa (si existe).
+      </div>
+      <div class="row report-actions inv-actions">
+        <button id="exportFoundBtn" type="button">Base depurada (encontrados)</button>
+        <button id="exportNotFoundBtn" type="button">Listado no encontrados</button>
+        <button id="exportConsolidatedBtn" type="button">Consolidado final</button>
+      </div>
+      <div class="field-help">
+        Para A22 y reportes institucionales formales usa el modulo <strong>Informes</strong>.
+      </div>
+      <div id="exportStateHelp" class="field-help"></div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="{{ url_for('static', filename='inventario.js') }}"></script>
+{% endblock %}

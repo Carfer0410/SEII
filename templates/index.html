@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Inventario - MVP</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 20px }
+      .col { display:inline-block; vertical-align:top; margin-right:20px }
+      #scanInput { width: 300px; font-size: 18px; padding:8px }
+      table { border-collapse: collapse; width: 100% }
+      th, td { border: 1px solid #ddd; padding: 8px }
+      #importStatus, #scanStatus { margin-top: 8px; font-weight: 600 }
+    </style>
+  </head>
+  <body>
+    <h2>Sistema de Inventario - MVP</h2>
+
+    <div>
+      <form id="uploadForm">
+        <label>Importar Excel/CSV (exportado desde el sistema):</label>
+        <input type="file" name="file" id="fileInput" accept=".csv, .xlsx, .xls" />
+        <button type="submit">Importar</button>
+      </form>
+      <div id="importResult"></div>
+      <div id="importStatus"></div>
+    </div>
+
+    <hr />
+
+    <div>
+      <label>Servicio (filtrar): </label>
+      <select id="serviceSelect"><option value="">-- Todos --</option></select>
+      <button id="refreshBtn">Refrescar lista</button>
+      <button id="exportBtn">Exportar A22 (Excel, usa jornada si esta seleccionada)</button>
+      <input id="receiver" placeholder="Responsable que recibe (A22)" />
+    </div>
+
+    <hr />
+
+    <div>
+      <h3>Jornadas de inventario</h3>
+      <input id="runName" placeholder="Nombre jornada (ej: Inventario 2026 - Urgencias)" />
+      <button id="createRunBtn">Crear jornada</button>
+      <select id="runSelect"><option value="">-- Sin jornada --</option></select>
+      <button id="refreshRunsBtn">Refrescar jornadas</button>
+      <button id="closeRunBtn">Cerrar jornada</button>
+      <div id="runSummary"></div>
+    </div>
+
+    <h3>Modo escaneo</h3>
+    <div>
+      <div class="col">
+        <label>Campo de escaneo (pistola USB escribe aquí):</label><br />
+        <input id="scanInput" autofocus />
+      </div>
+      <div class="col">
+        <label>O usar cámara:</label><br />
+        <div id="reader" style="width:320px"></div>
+        <button id="startCamera">Iniciar cámara</button>
+        <button id="stopCamera">Detener</button>
+      </div>
+    </div>
+    <div id="scanStatus"></div>
+
+    <h3>Activos (primeros 5000)</h3>
+    <div id="assetsContainer"></div>
+
+    <hr />
+
+    <div>
+      <h3>Bajas pendientes</h3>
+      <input id="disposalCode" placeholder="Codigo activo para baja" />
+      <input id="disposalReason" placeholder="Motivo baja" />
+      <button id="createDisposalBtn">Marcar pendiente baja</button>
+      <select id="disposalStatusFilter">
+        <option value="">-- Todos los estados --</option>
+        <option value="Pendiente baja">Pendiente baja</option>
+        <option value="Aprobada para baja">Aprobada para baja</option>
+        <option value="Rechazada">Rechazada</option>
+      </select>
+      <button id="refreshDisposalsBtn">Refrescar bajas</button>
+      <div id="disposalStatus"></div>
+      <div id="disposalsContainer"></div>
+    </div>
+
+    <hr />
+
+    <div>
+      <h3>Dashboard gerencial</h3>
+      <button id="refreshDashboardBtn">Actualizar dashboard</button>
+      <button id="exportDashboardPdfBtn">Exportar PDF dashboard</button>
+      <div id="dashboardStatus"></div>
+      <div id="dashboardKpis"></div>
+      <div>
+        <h4>Por servicio</h4>
+        <canvas id="serviceChart" height="120"></canvas>
+      </div>
+      <div>
+        <h4>Por tipo de equipo</h4>
+        <canvas id="typeChart" height="120"></canvas>
+      </div>
+      <div>
+        <h4>Por area</h4>
+        <canvas id="areaChart" height="120"></canvas>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="/static/main.js"></script>
+  </body>
+</html>

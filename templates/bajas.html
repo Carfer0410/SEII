@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% set title = "Bajas pendientes" %}
+{% set subtitle = "Gestion institucional de activos en proceso de baja con control por estado y tipo." %}
+
+{% block content %}
+  <div class="stack">
+    <div class="card report-hero">
+      <div>
+        <h3>Gestion de bajas</h3>
+        <p>Consolida solicitudes, valida estados y emite reportes por categoria para seguimiento tecnico y contable.</p>
+      </div>
+      <div class="hero-badges">
+        <span class="badge">Pendiente</span>
+        <span class="badge">Aprobada</span>
+        <span class="badge">Rechazada</span>
+        <span class="badge">Reportes Excel/PDF</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Registrar baja</h3>
+      <div class="row">
+        <select id="disposalPeriodSelect"><option value="">-- Selecciona periodo --</option></select>
+        <input id="disposalCode" placeholder="Codigo del activo" />
+        <input id="disposalReason" placeholder="Motivo de baja" />
+        <button id="createDisposalBtn">Agregar baja</button>
+      </div>
+      <div id="disposalStatus" class="status"></div>
+    </div>
+
+    <div class="card">
+      <h3>Consulta y reportes</h3>
+      <div class="row">
+        <select id="disposalPeriodFilter"><option value="">-- Todos los periodos --</option></select>
+        <select id="serviceSelect"><option value="">-- Todos los servicios --</option></select>
+        <select id="disposalStatusFilter">
+          <option value="">-- Todos los estados --</option>
+          <option value="Pendiente baja">Pendiente baja</option>
+          <option value="Aprobada para baja">Aprobada para baja</option>
+          <option value="Rechazada">Rechazada</option>
+        </select>
+        <button id="exportGeneralExcelBtn" type="button">General Excel</button>
+        <button id="exportGeneralPdfBtn" type="button">General PDF</button>
+        <button id="exportControlExcelBtn" type="button">Control Excel</button>
+        <button id="exportControlPdfBtn" type="button">Control PDF</button>
+        <button id="reclassifyBtn" type="button">Reclasificar todo</button>
+        <button id="refreshDisposalsBtn">Refrescar</button>
+      </div>
+      <div id="disposalsContainer"></div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='bajas.js') }}"></script>
+{% endblock %}

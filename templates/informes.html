@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% set title = "Informes" %}
+{% set subtitle = "Centro institucional de reportes: genera A22 en Excel y PDF con control documental y trazabilidad." %}
+
+{% block content %}
+  <div class="stack">
+    <div class="card report-hero reports-shell">
+      <div class="reports-shell-head">
+        <div>
+          <h3>Centro de informes</h3>
+          <p>Selecciona el tipo de informe para trabajar con un formulario limpio y enfocado.</p>
+        </div>
+        <div class="reports-switcher" role="tablist" aria-label="Tipo de informe">
+          <button type="button" class="reports-tab active" id="tabA22Btn" data-report-tab="a22" role="tab" aria-selected="true">A22</button>
+          <button type="button" class="reports-tab" id="tabAccountingBtn" data-report-tab="accounting" role="tab" aria-selected="false">Informe contable</button>
+        </div>
+      </div>
+      <div class="hero-badges">
+        <span class="badge">Formato institucional</span>
+        <span class="badge">Flujo por modulo</span>
+        <span class="badge">Excel + PDF</span>
+      </div>
+    </div>
+
+    <section id="panelA22" class="report-panel active" role="tabpanel" aria-labelledby="tabA22Btn">
+      <div class="card">
+        <h3>Formulario A22</h3>
+        <div class="date-highlight">
+          <label>Fecha del A22 (opcional)</label>
+          <input id="reportDate" type="date" />
+        </div>
+        <div class="grid-2">
+          <div class="stack section-highlight">
+            <label>Periodo (obligatorio)</label>
+            <select id="reportPeriodSelect"><option value="">-- Selecciona periodo --</option></select>
+          </div>
+          <div class="stack section-highlight">
+            <label>Jornada (obligatoria)</label>
+            <select id="reportRunSelect"><option value="">-- Selecciona jornada --</option></select>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="stack section-highlight">
+            <label>Servicio (automatico por jornada)</label>
+            <input id="reportServiceAuto" readonly placeholder="Se autocompleta con la jornada seleccionada" />
+          </div>
+          <div class="stack section-highlight">
+            <label>Responsable que recibe (opcional)</label>
+            <input id="reportReceiver" list="reportResponsiblesList" placeholder="Buscar por nombre o apellido" />
+            <datalist id="reportResponsiblesList"></datalist>
+            <small class="field-help">
+              Si lo dejas vacio, se toma el responsable registrado en la base para ese servicio.
+            </small>
+          </div>
+        </div>
+        <div class="stack section-highlight">
+          <label>Observacion general por defecto</label>
+          <input id="reportObservation" placeholder="Ejemplo: Inventario fisico realizado con equipo de activos fijos" />
+        </div>
+        <div class="grid-2">
+          <div class="stack section-highlight">
+            <label>Lider de almacen (obligatorio)</label>
+            <input id="reportWarehouseLead" placeholder="Ejemplo: YUDI ELENA CAMBINDO MINA" required />
+          </div>
+          <div class="stack section-highlight">
+            <label>Responsable de activos fijos (obligatorio)</label>
+            <input id="reportAssetsManager" placeholder="Nombre del responsable de activos fijos" required />
+          </div>
+        </div>
+        <div class="row report-actions section-highlight actions-highlight">
+          <button id="refreshReportFiltersBtn" type="button">Actualizar filtros</button>
+          <button id="exportA22ExcelBtn" type="button">Descargar A22 Excel</button>
+          <button id="exportA22PdfBtn" type="button">Descargar A22 PDF</button>
+          <button id="refreshA22HistoryBtn" type="button">Actualizar historial A22</button>
+        </div>
+        <div id="reportStatus" class="status"></div>
+      </div>
+
+      <div class="card">
+        <h3>Observaciones por activo (opcional)</h3>
+        <p class="field-help">Selecciona un servicio para cargar sus activos. Solo diligencia observacion en los codigos que lo requieran.</p>
+        <div class="row">
+          <input id="assetObsSearch" placeholder="Filtrar por codigo o descripcion" />
+        </div>
+        <div id="assetObsContainer"></div>
+      </div>
+
+      <div class="card">
+        <h3>Historial A22</h3>
+        <p class="field-help">Consulta y descarga actas A22 (Excel y PDF) generadas anteriormente.</p>
+        <div id="a22HistoryContainer"></div>
+      </div>
+    </section>
+
+    <section id="panelAccounting" class="report-panel" role="tabpanel" aria-labelledby="tabAccountingBtn">
+      <div class="card">
+        <h3>Informe contable mensual</h3>
+        <p class="field-help">Genera el archivo oficial de conciliacion con base completa, desglose por familias e informe consolidado.</p>
+        <div class="stack section-highlight">
+          <label>Titulo del informe (obligatorio)</label>
+          <input id="accountingReportTitle" placeholder="Ejemplo: INFORME CONCILIACION ACTIVOS FIJOS-CONTABILIDAD DICIEMBRE 2025" />
+        </div>
+        <div class="stack section-highlight">
+          <label>Usuario que genera informe (obligatorio)</label>
+          <input id="accountingGeneratedBy" placeholder="Nombre y apellido del usuario que genera el informe" />
+        </div>
+        <div class="grid-2">
+          <div class="stack section-highlight">
+            <label>Mes del informe</label>
+            <select id="accountingMonth">
+              <option value="1">Enero</option>
+              <option value="2">Febrero</option>
+              <option value="3">Marzo</option>
+              <option value="4">Abril</option>
+              <option value="5">Mayo</option>
+              <option value="6">Junio</option>
+              <option value="7">Julio</option>
+              <option value="8">Agosto</option>
+              <option value="9">Septiembre</option>
+              <option value="10">Octubre</option>
+              <option value="11">Noviembre</option>
+              <option value="12">Diciembre</option>
+            </select>
+          </div>
+          <div class="stack section-highlight">
+            <label>Año del informe</label>
+            <input id="accountingYear" type="number" min="2000" max="2100" step="1" />
+          </div>
+        </div>
+        <div class="row report-actions section-highlight actions-highlight">
+          <button id="exportAccountingMonthlyBtn" type="button">Descargar informe contable mensual</button>
+          <button id="refreshAccountingHistoryBtn" type="button">Actualizar historial</button>
+        </div>
+        <div id="accountingStatus" class="status"></div>
+      </div>
+      <div class="card">
+        <h3>Historial de informes contables</h3>
+        <p class="field-help">Consulta y descarga informes generados previamente, organizados por periodo.</p>
+        <div id="accountingHistoryContainer"></div>
+      </div>
+    </section>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='informes.js') }}"></script>
+{% endblock %}

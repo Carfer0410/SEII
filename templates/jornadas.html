@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% set title = "Jornadas de inventario" %}
+{% set subtitle = "Importa la base oficial, controla ciclos de inventario y cierre automatico de pendientes." %}
+
+{% block content %}
+  <div class="stack jour-screen">
+    <div class="card jour-hero">
+      <h3>Gestion de jornadas</h3>
+      <div class="hero-badges">
+        <span class="badge">Base institucional</span>
+        <span class="badge">Periodos</span>
+        <span class="badge">Jornadas activas</span>
+        <span class="badge">Historial y cierre</span>
+      </div>
+      <p class="field-help">
+        Gestiona el proceso completo: importar la base oficial, organizar periodos, crear jornadas y cerrar pendientes con trazabilidad.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>Base general</h3>
+      <div class="jour-block">
+        <p class="field-help">Antes de crear jornadas, importa la base oficial de activos para habilitar todo el flujo operativo.</p>
+        <form id="uploadForm" class="row">
+          <input type="file" id="fileInput" accept=".csv, .xlsx, .xls" />
+          <button type="submit">Importar base</button>
+        </form>
+        <div id="importStatus" class="status"></div>
+        <div id="importResult" class="import-summary"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Periodos</h3>
+      <div class="jour-two-cols">
+        <div class="jour-block">
+          <h4>Crear periodo</h4>
+          <div class="row">
+            <input id="periodName" placeholder="Nombre (ej: 2026-1)" />
+            <select id="periodType">
+              <option value="semestral">Semestral</option>
+              <option value="aleatorio">Aleatorio</option>
+            </select>
+          </div>
+          <div class="row">
+            <button id="createPeriodBtn" type="button">Crear periodo</button>
+            <button id="refreshPeriodsBtn" type="button">Refrescar periodos</button>
+          </div>
+        </div>
+        <div class="jour-block">
+          <h4>Control de periodo</h4>
+          <div class="row">
+            <select id="periodFilterSelect"><option value="">-- Selecciona periodo --</option></select>
+            <button id="closePeriodBtn" type="button">Cerrar periodo</button>
+            <button id="cancelPeriodBtn" type="button" class="mini-btn">Anular periodo</button>
+          </div>
+          <div class="field-help">Cierra el periodo solo cuando todas las jornadas planeadas esten finalizadas.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Nueva jornada</h3>
+      <div class="jour-block">
+        <div class="row">
+          <input id="runName" placeholder="Nombre de la jornada" />
+          <select id="periodSelect"><option value="">-- Selecciona periodo --</option></select>
+          <button id="createRunBtn">Crear jornada</button>
+        </div>
+        <label for="serviceSearch">Servicios del alcance de la jornada</label>
+        <div class="jour-service-picker">
+          <div class="jour-service-panel">
+            <input id="serviceSearch" placeholder="Buscar servicio..." />
+            <div class="jour-service-tools">
+              <button id="selectAllServicesBtn" type="button" class="mini-btn">Seleccionar filtrados</button>
+              <button id="clearServicesBtn" type="button" class="mini-btn">Limpiar</button>
+            </div>
+            <div id="servicePickerList" class="jour-service-list"></div>
+          </div>
+          <div class="jour-service-selected-panel">
+            <div class="jour-service-selected-head">
+              <strong>Seleccionados</strong>
+              <span id="selectedServicesCount" class="jour-service-count">0</span>
+            </div>
+            <div id="selectedServicesList" class="jour-service-selected-list"></div>
+          </div>
+        </div>
+        <div class="field-help">Marca los servicios sin usar Ctrl/Shift. Puedes buscar, seleccionar filtrados y quitar con un clic.</div>
+        <div id="scanStatus" class="status"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Gestion de jornadas</h3>
+      <div class="jour-block">
+        <div class="row">
+          <select id="runSelect"><option value="">-- Sin jornada activa --</option></select>
+          <button id="refreshRunsBtn">Refrescar</button>
+          <button id="closeRunBtn">Cerrar jornada</button>
+          <button id="cancelRunBtn" class="mini-btn">Anular jornada</button>
+        </div>
+        <div id="runSummary" class="status"></div>
+      </div>
+      <h4>Historial de jornadas cerradas</h4>
+      <div id="closedRunsMeta" class="field-help"></div>
+      <div id="closedRunsContainer"></div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='jornadas.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% set title = "Novedades y Saneamiento" %}
+{% set subtitle = "Detecta discrepancias, prioriza riesgo y gestiona cierre con trazabilidad por periodo." %}
+
+{% block content %}
+  <div class="stack">
+    <div class="card report-hero">
+      <h3>Motor de discrepancias</h3>
+      <p>Analiza automaticamente no encontrados criticos, inconsistencias de ubicacion/responsable, activos sin identificadores y riesgos de baja pendiente.</p>
+      <div class="hero-badges">
+        <span class="badge">Deteccion automatica</span>
+        <span class="badge">Flujo de cierre</span>
+        <span class="badge">Informe comite</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Control del periodo</h3>
+      <div class="row">
+        <select id="issuesPeriodSelect"><option value="">-- Selecciona periodo --</option></select>
+        <label class="switch-label" for="issuesAnalyzeBase">
+          <input id="issuesAnalyzeBase" type="checkbox" />
+          <span class="switch-slider" aria-hidden="true"></span>
+          <span class="switch-text">Alcance completo: analizar toda la base institucional</span>
+        </label>
+        <button id="issuesScanBtn" type="button">Analizar novedades</button>
+        <button id="issuesRefreshBtn" type="button">Actualizar tablero</button>
+        <button id="issuesPdfBtn" type="button">Exportar PDF comite</button>
+        <button id="issuesHelpBtn" type="button" class="mini-btn">Ayuda</button>
+      </div>
+      <div id="issuesStatus" class="status"></div>
+    </div>
+
+    <div class="card">
+      <h3>Resumen de riesgo</h3>
+      <div id="issuesKpis" class="jour-progress-kpis"></div>
+    </div>
+
+    <div class="card">
+      <h3>Bandeja de novedades</h3>
+      <div class="row">
+        <select id="issuesStatusFilter">
+          <option value="">-- Estado: todos --</option>
+          <option value="Nuevo">Nuevo</option>
+          <option value="En analisis">En analisis</option>
+          <option value="Escalado">Escalado</option>
+          <option value="Cerrado">Cerrado</option>
+        </select>
+        <select id="issuesSeverityFilter">
+          <option value="">-- Severidad: todas --</option>
+          <option value="Alta">Alta</option>
+          <option value="Media">Media</option>
+          <option value="Baja">Baja</option>
+        </select>
+      </div>
+      <div id="issuesTable"></div>
+    </div>
+
+    <div id="issuesHelpModal" class="help-modal" hidden>
+      <div class="help-modal-card">
+        <div class="help-modal-head">
+          <h3>Leyenda de alertas</h3>
+          <button id="issuesHelpCloseBtn" type="button" class="mini-btn">Cerrar</button>
+        </div>
+        <ul class="cron-list">
+          <li><b>No encontrado critico:</b> Activo no hallado con alto impacto operativo/clinico.</li>
+          <li><b>No encontrado de alto valor:</b> Activo no hallado con alto impacto economico.</li>
+          <li><b>Escaneado en servicio distinto:</b> Se verifico en un servicio diferente al registrado en base.</li>
+          <li><b>Revision de ubicacion:</b> Validar y actualizar ubicacion oficial del activo.</li>
+          <li><b>Revision de responsable:</b> Validar y actualizar custodio/responsable del activo.</li>
+          <li><b>Duplicidad probable de codigo:</b> Codigo de activo o codificacion repetida.</li>
+          <li><b>Sin serial/referencia:</b> Faltan identificadores tecnicos para trazabilidad.</li>
+          <li><b>Falta marca/modelo:</b> Informacion tecnica incompleta.</li>
+          <li><b>Falta responsable/ubicacion:</b> Custodia incompleta en la base.</li>
+          <li><b>Activo pendiente sin escaneo:</b> Activo del alcance del periodo sin verificacion en jornadas.</li>
+          <li><b>Valores financieros inconsistentes:</b> Costo menor/igual a cero o saldo negativo.</li>
+          <li><b>Depreciacion/vida util inconsistente:</b> Cruce anomalo entre DEPRECIA y VIDA_UTIL (excepto activos de control).</li>
+          <li><b>Riesgo por baja pendiente:</b> Activo con proceso de baja sin cierre.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='novedades.js') }}"></script>
+{% endblock %}

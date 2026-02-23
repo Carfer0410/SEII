@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% set title = "Dashboard gerencial" %}
+{% set subtitle = "Indicadores ejecutivos para comites, control institucional y toma de decisiones." %}
+
+{% block content %}
+  <div class="stack">
+    <div class="card report-hero">
+      <div>
+        <h3>Control ejecutivo de inventario</h3>
+        <p>Analiza resultados por periodo y jornada, identifica riesgos y genera informe formal para alta gerencia.</p>
+      </div>
+      <div class="hero-badges">
+        <span class="badge">KPI institucional</span>
+        <span class="badge">Analitica por servicio</span>
+        <span class="badge">Comparativo de periodos</span>
+        <span class="badge">PDF gerencial</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Contexto y reporte</h3>
+      <div class="row">
+        <select id="periodSelect"><option value="">-- Selecciona periodo --</option></select>
+        <select id="runSelect"><option value="">-- Todas las jornadas del periodo --</option></select>
+        <input id="serviceAuto" readonly placeholder="Servicio automatico por jornada" />
+        <button id="refreshDashboardBtn">Actualizar</button>
+        <button id="exportDashboardPdfBtn">Exportar PDF</button>
+      </div>
+      <div id="dashboardStatus" class="status"></div>
+      <div id="dashboardKpis" class="kpis"></div>
+    </div>
+
+    <div class="card">
+      <h3>Activos por servicio</h3>
+      <div class="row">
+        <label for="topService">Top:</label>
+        <select id="topService">
+          <option value="10">10</option>
+          <option value="15" selected>15</option>
+          <option value="20">20</option>
+          <option value="30">30</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+      <div class="chart-wrap"><canvas id="serviceChart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h3>Activos por tipo de equipo</h3>
+      <div class="row">
+        <label for="topType">Top:</label>
+        <select id="topType">
+          <option value="10">10</option>
+          <option value="15" selected>15</option>
+          <option value="20">20</option>
+          <option value="30">30</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+      <div class="chart-wrap"><canvas id="typeChart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h3>Activos por area</h3>
+      <div class="row">
+        <label for="topArea">Top:</label>
+        <select id="topArea">
+          <option value="10" selected>10</option>
+          <option value="15">15</option>
+          <option value="20">20</option>
+          <option value="30">30</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+      <div class="chart-wrap"><canvas id="areaChart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h3>Distribucion del estado</h3>
+      <div class="chart-wrap"><canvas id="statusPieChart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h3>Comparativo entre periodos</h3>
+      <div class="row">
+        <select id="comparePeriodA"><option value="">Periodo A</option></select>
+        <select id="comparePeriodB"><option value="">Periodo B</option></select>
+        <button id="comparePeriodsBtn" type="button">Comparar</button>
+      </div>
+      <div id="compareStatus" class="status"></div>
+      <div id="compareContainer"></div>
+    </div>
+
+    <div class="card">
+      <h3>Activos no encontrados (detalle)</h3>
+      <div id="notFoundSpecificStatus" class="field-help"></div>
+      <div id="notFoundSpecificContainer"></div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+{% endblock %}
