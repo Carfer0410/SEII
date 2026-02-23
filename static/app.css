@@ -2453,9 +2453,310 @@ tbody tr:hover {
   color: #1b3347;
 }
 
+.docs-hero {
+  border: 1px solid #c6d9e8;
+  background:
+    radial-gradient(1200px 280px at 10% -30%, rgba(18, 118, 169, 0.14), transparent 60%),
+    linear-gradient(145deg, #fbfdff 0%, #ecf5fc 100%);
+}
+
+.docs-screen .card {
+  border-color: #c9dceb;
+}
+
+.docs-upload-card,
+.docs-repo-card {
+  background: #ffffff;
+}
+
+.docs-subtitle {
+  margin: 4px 0 10px;
+  color: #4f6778;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.docs-intro {
+  margin: 2px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #d3e3ef;
+  border-left: 4px solid #1983bf;
+  border-radius: 10px;
+  background: linear-gradient(165deg, #fafdff 0%, #f1f8fe 100%);
+}
+
+.docs-subtitle-strong {
+  margin: 2px 0 0;
+  color: #1e587c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.docs-form-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.docs-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #d7e6f2;
+  border-radius: 10px;
+  background: linear-gradient(155deg, #ffffff 0%, #f8fcff 100%);
+  box-shadow: 0 1px 0 rgba(20, 87, 121, 0.05);
+}
+
+.docs-form-grid label span {
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #1a5d86;
+}
+
+.docs-form-grid label:nth-child(1),
+.docs-form-grid label:nth-child(2),
+.docs-form-grid label:nth-child(3),
+.docs-form-grid label:nth-child(4),
+.docs-form-grid label:nth-child(5),
+.docs-form-grid label:nth-child(6) {
+  grid-column: span 2;
+}
+
+.docs-form-grid label:nth-child(7),
+.docs-form-grid label:nth-child(8) {
+  grid-column: span 3;
+}
+
+.docs-form-grid input,
+.docs-form-grid select,
+.docs-form-grid textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  height: auto;
+  font-size: 13px;
+  border-radius: 8px;
+  border-color: #c3d9e8;
+  background: #fff;
+}
+
+.docs-form-grid textarea {
+  resize: vertical;
+  padding: 8px 10px;
+}
+
+.docs-file-help {
+  margin-top: 2px;
+  color: #5a7082;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.docs-col-2 {
+  grid-column: span 3;
+}
+
+#docAssetName[readonly] {
+  background: #f2f7fc;
+  color: #456279;
+  border-style: dashed;
+}
+
+.docs-actions {
+  margin-top: 12px;
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.docs-actions button:first-child {
+  min-width: 180px;
+}
+
+.docs-primary-btn {
+  background: linear-gradient(120deg, #0f78b5, #1ea560);
+  border: 0;
+  color: #fff;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  box-shadow: 0 8px 18px rgba(18, 126, 180, 0.28);
+}
+
+.docs-primary-btn:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+  box-shadow: 0 11px 20px rgba(18, 126, 180, 0.34);
+}
+
+.docs-secondary-btn {
+  font-weight: 700;
+}
+
+.docs-filters {
+  display: grid;
+  grid-template-columns: 2fr .9fr .9fr .9fr 1fr auto;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.docs-filters input,
+.docs-filters select {
+  min-width: 0;
+  min-height: 38px;
+  border-color: #c7dced;
+  background: #fbfdff;
+}
+
+.docs-filters button {
+  min-width: 120px;
+}
+
+.docs-table-wrap .docs-table {
+  width: 100%;
+  table-layout: fixed;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.docs-table th,
+.docs-table td {
+  font-size: 11px;
+  padding: 7px 8px;
+}
+
+.docs-table th {
+  background: linear-gradient(180deg, #edf5fb 0%, #e7f1f9 100%);
+  color: #174e72;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom: 1px solid #c7dced;
+}
+
+.docs-table tr:nth-child(even) td {
+  background: #fbfdff;
+}
+
+.docs-table td:nth-child(1),
+.docs-table td:nth-child(2),
+.docs-table td:nth-child(4),
+.docs-table td:nth-child(7),
+.docs-table td:nth-child(8),
+.docs-table td:nth-child(10) {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.doc-type-chip {
+  display: inline-block;
+  border: 1px solid #aacde5;
+  border-radius: 999px;
+  padding: 2px 9px;
+  background: linear-gradient(180deg, #eef6fc 0%, #e4f1fa 100%);
+  color: #1a5b84;
+  font-weight: 700;
+  font-size: 10px;
+}
+
+.file-meta {
+  color: #5c7080;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.docs-table .mini-btn {
+  min-width: 0;
+  min-height: 28px;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 10px;
+  line-height: 1;
+  border-radius: 7px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.docs-table td:last-child .mini-btn {
+  margin: 2px 2px;
+}
+
+.docs-archive-btn {
+  background: #fff7ef !important;
+  color: #8a4f00 !important;
+  border: 1px solid #e7c79b !important;
+}
+
+.docs-archive-btn:hover {
+  background: #ffefd9 !important;
+  border-color: #dcb67f !important;
+}
+
+.docs-edit-card {
+  max-width: 720px;
+}
+
+.docs-edit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.docs-edit-grid label {
+  display: grid;
+  gap: 5px;
+}
+
+.docs-edit-grid label span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #1d5b81;
+  font-weight: 700;
+}
+
+.docs-edit-col2 {
+  grid-column: span 2;
+}
+
+.docs-edit-grid input,
+.docs-edit-grid select,
+.docs-edit-grid textarea {
+  min-width: 0;
+  min-height: 36px;
+  border-color: #c4d9e9;
+}
+
+.docs-edit-grid textarea {
+  resize: vertical;
+  padding: 8px 10px;
+}
+
 @media (max-width: 900px) {
   .kpi-grid-exec {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .docs-form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .docs-form-grid label:nth-child(1),
+  .docs-form-grid label:nth-child(2),
+  .docs-form-grid label:nth-child(3),
+  .docs-form-grid label:nth-child(4),
+  .docs-form-grid label:nth-child(5),
+  .docs-form-grid label:nth-child(6),
+  .docs-form-grid label:nth-child(7),
+  .docs-form-grid label:nth-child(8),
+  .docs-col-2 {
+    grid-column: span 1;
+  }
+
+  .docs-filters {
+    grid-template-columns: 1fr 1fr;
   }
 }
 
@@ -2471,6 +2772,30 @@ tbody tr:hover {
   .life-label {
     border-right: none;
     border-bottom: 1px solid #d6e5f1;
+  }
+
+  .docs-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .docs-form-grid label {
+    grid-column: span 1 !important;
+  }
+
+  .docs-col-2 {
+    grid-column: span 1;
+  }
+
+  .docs-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .docs-edit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .docs-edit-col2 {
+    grid-column: span 1;
   }
 }
 

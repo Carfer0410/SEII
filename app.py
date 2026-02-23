@@ -64,6 +64,7 @@ APP_TIMEZONE = os.getenv('APP_TIMEZONE', 'America/Bogota')
 LOCAL_TZ = _resolve_zoneinfo(APP_TIMEZONE) or timezone.utc
 DB_PATH = os.path.join(BASE_DIR, 'assets.db')
 REPORTS_DIR = os.path.join(BASE_DIR, 'generated_reports')
+DOCUMENTS_DIR = os.path.join(BASE_DIR, 'generated_documents')
 TEMPLATE_A22_PATH = os.path.join(BASE_DIR, 'formato a22.xlsx')
 ACCOUNTING_TEMPLATE_CANDIDATES = [
     os.path.join(BASE_DIR, 'INFORME CONTABILIDAD REF.xlsx'),
@@ -85,6 +86,18 @@ CODIFICACION_CANDIDATES = [
 TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates')
 STATIC_DIR = os.path.join(BASE_DIR, 'static')
 DISPOSAL_TYPE_KEYS = ['BIOMEDICO', 'MUEBLE Y ENSER', 'INDUSTRIAL', 'TECNOLOGICO', 'CONTROL']
+DOCUMENT_TYPE_OPTIONS = [
+    'Salida de almacen',
+    'RA recepcion',
+    'Contrato',
+    'Nota interna',
+    'Oficio',
+    'Certificacion',
+    'Mantenimiento',
+    'Baja',
+    'Novedad',
+    'Otro',
+]
 ACCOUNTING_FAMILY_ORDER = """
 5504
 5504001
@@ -645,7 +658,52 @@ class AssetIssue(db.Model):
         }
 
 
+class DocumentRecord(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    link_type = db.Column(db.String, nullable=False, default='general')  # general | asset
+    asset_id = db.Column(db.Integer, db.ForeignKey('asset.id'))
+    asset_code = db.Column(db.String)
+    asset_name = db.Column(db.String)
+    document_type = db.Column(db.String, nullable=False)
+    title = db.Column(db.String, nullable=False)
+    description = db.Column(db.String)
+    doc_date = db.Column(db.String)
+    area_service = db.Column(db.String)
+    radicado = db.Column(db.String)
+    file_name = db.Column(db.String, nullable=False)
+    file_path = db.Column(db.String, nullable=False)
+    file_ext = db.Column(db.String)
+    file_size = db.Column(db.Integer, default=0)
+    uploaded_by = db.Column(db.String)
+    uploaded_at = db.Column(db.String, nullable=False)
+    status = db.Column(db.String, nullable=False, default='active')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'link_type': self.link_type,
+            'asset_id': self.asset_id,
+            'asset_code': self.asset_code or '',
+            'asset_name': self.asset_name or '',
+            'document_type': self.document_type or '',
+            'title': self.title or '',
+            'description': self.description or '',
+            'doc_date': self.doc_date or '',
+            'area_service': self.area_service or '',
+            'radicado': self.radicado or '',
+            'file_name': self.file_name or '',
+            'file_ext': self.file_ext or '',
+            'file_size': int(self.file_size or 0),
+            'uploaded_by': self.uploaded_by or '',
+            'uploaded_at': self.uploaded_at,
+            'uploaded_at_local': format_dt_local(self.uploaded_at),
+            'status': self.status,
+        }
+
+
 def ensure_db():
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    os.makedirs(DOCUMENTS_DIR, exist_ok=True)
     if has_app_context():
         db.create_all()
         ensure_schema_updates()
@@ -1068,6 +1126,12 @@ def novedades_page():
 def hoja_vida_page():
     ensure_db()
     return render_template('hoja_vida.html')
+
+
+@app.route('/documentos')
+def documentos_page():
+    ensure_db()
+    return render_template('documentos.html')
 
 
 @app.route('/logo')
@@ -5926,6 +5990,228 @@ def asset_life_sheet_pdf():
     out.seek(0)
     filename = clean_filename(f"hoja_vida_{asset.c_act}.pdf")
     return send_file(out, as_attachment=True, download_name=filename, mimetype='application/pdf')
+
+
+def allowed_document_extension(file_name):
+    ext = os.path.splitext(str(file_name or ''))[1].lower()
+    allowed = {
+        '.pdf', '.xlsx', '.xls', '.csv',
+        '.png', '.jpg', '.jpeg', '.webp',
+        '.doc', '.docx', '.txt',
+    }
+    return ext in allowed
+
+
+def document_mimetype_by_ext(ext):
+    ext = str(ext or '').lower()
+    mapping = {
+        '.pdf': 'application/pdf',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.xls': 'application/vnd.ms-excel',
+        '.csv': 'text/csv',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.webp': 'image/webp',
+        '.doc': 'application/msword',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.txt': 'text/plain',
+    }
+    return mapping.get(ext, 'application/octet-stream')
+
+
+@app.route('/assets/find_by_code', methods=['GET'])
+def assets_find_by_code():
+    ensure_db()
+    code = (request.args.get('code') or '').strip()
+    if not code:
+        return jsonify({'error': 'Debes indicar codigo de activo'}), 400
+    asset = get_asset_by_c_act_strict(code)
+    if not asset:
+        return jsonify({'error': 'Activo no encontrado'}), 404
+    return jsonify({
+        'asset': {
+            'id': asset.id,
+            'code': asset.c_act or '',
+            'name': asset.nom or '',
+            'service': asset.nom_ccos or '',
+            'location': asset.des_ubi or '',
+        }
+    })
+
+
+@app.route('/documents/types', methods=['GET'])
+def documents_types():
+    return jsonify({'types': DOCUMENT_TYPE_OPTIONS})
+
+
+@app.route('/documents', methods=['GET'])
+def documents_list():
+    ensure_db()
+    q = DocumentRecord.query
+    search = (request.args.get('search') or '').strip()
+    link_type = (request.args.get('link_type') or '').strip().lower()
+    document_type = (request.args.get('document_type') or '').strip()
+    area_service = (request.args.get('area_service') or '').strip()
+    status = (request.args.get('status') or 'active').strip().lower()
+
+    if status in {'active', 'archived'}:
+        q = q.filter(DocumentRecord.status == status)
+    elif status == 'all':
+        pass
+    else:
+        q = q.filter(DocumentRecord.status == 'active')
+
+    if link_type in {'asset', 'general'}:
+        q = q.filter(DocumentRecord.link_type == link_type)
+    if document_type:
+        q = q.filter(DocumentRecord.document_type == document_type)
+    if area_service:
+        q = q.filter(DocumentRecord.area_service == area_service)
+    if search:
+        term = f'%{search}%'
+        q = q.filter(
+            (DocumentRecord.title.like(term)) |
+            (DocumentRecord.asset_code.like(term)) |
+            (DocumentRecord.radicado.like(term)) |
+            (DocumentRecord.file_name.like(term))
+        )
+
+    rows = q.order_by(DocumentRecord.id.desc()).limit(800).all()
+    return jsonify({'items': [r.to_dict() for r in rows]})
+
+
+@app.route('/documents', methods=['POST'])
+def documents_create():
+    ensure_db()
+    f = request.files.get('file')
+    if not f:
+        return jsonify({'error': 'Debes adjuntar un archivo'}), 400
+
+    raw_file_name = str(f.filename or '').strip()
+    if not raw_file_name:
+        return jsonify({'error': 'Nombre de archivo invalido'}), 400
+    if not allowed_document_extension(raw_file_name):
+        return jsonify({'error': 'Tipo de archivo no permitido'}), 400
+
+    file_ext = os.path.splitext(raw_file_name)[1].lower()
+    f.seek(0, os.SEEK_END)
+    file_size = int(f.tell() or 0)
+    f.seek(0)
+    if file_size <= 0:
+        return jsonify({'error': 'El archivo esta vacio'}), 400
+    if file_size > 30 * 1024 * 1024:
+        return jsonify({'error': 'Archivo supera el limite de 30 MB'}), 400
+
+    link_type = (request.form.get('link_type') or 'general').strip().lower()
+    if link_type not in {'asset', 'general'}:
+        return jsonify({'error': 'Tipo de vinculacion invalido'}), 400
+    document_type = (request.form.get('document_type') or '').strip()
+    title = (request.form.get('title') or '').strip()
+    description = (request.form.get('description') or '').strip()
+    doc_date = (request.form.get('doc_date') or '').strip()
+    area_service = (request.form.get('area_service') or '').strip()
+    radicado = (request.form.get('radicado') or '').strip()
+    uploaded_by = (request.form.get('uploaded_by') or '').strip() or 'usuario_movil'
+
+    if not document_type:
+        return jsonify({'error': 'Debes seleccionar tipo de documento'}), 400
+    if not title:
+        return jsonify({'error': 'Debes indicar el titulo/asunto'}), 400
+
+    asset_id = None
+    asset_code = ''
+    asset_name = ''
+    if link_type == 'asset':
+        code = (request.form.get('asset_code') or '').strip()
+        if not code:
+            return jsonify({'error': 'Debes indicar codigo activo'}), 400
+        asset = get_asset_by_c_act_strict(code)
+        if not asset:
+            return jsonify({'error': 'Codigo activo no existe en la base'}), 400
+        asset_id = asset.id
+        asset_code = asset.c_act or ''
+        asset_name = asset.nom or ''
+
+    stamped_name = f"{clean_filename(os.path.splitext(raw_file_name)[0])}_{now_local_dt().strftime('%Y%m%d%H%M%S')}{file_ext}"
+    file_path = os.path.join(DOCUMENTS_DIR, stamped_name)
+    f.save(file_path)
+
+    row = DocumentRecord(
+        link_type=link_type,
+        asset_id=asset_id,
+        asset_code=asset_code,
+        asset_name=asset_name,
+        document_type=document_type,
+        title=title,
+        description=description,
+        doc_date=doc_date,
+        area_service=area_service,
+        radicado=radicado,
+        file_name=raw_file_name,
+        file_path=file_path,
+        file_ext=file_ext,
+        file_size=file_size,
+        uploaded_by=uploaded_by,
+        uploaded_at=now_iso(),
+        status='active',
+    )
+    db.session.add(row)
+    db.session.commit()
+    return jsonify({'item': row.to_dict()})
+
+
+@app.route('/documents/<int:doc_id>/download', methods=['GET'])
+def documents_download(doc_id):
+    ensure_db()
+    row = DocumentRecord.query.filter_by(id=doc_id, status='active').first()
+    if not row:
+        return jsonify({'error': 'Documento no encontrado'}), 404
+    if not row.file_path or not os.path.exists(row.file_path):
+        return jsonify({'error': 'El archivo no existe en almacenamiento'}), 404
+    mime = document_mimetype_by_ext(row.file_ext)
+    return send_file(
+        row.file_path,
+        as_attachment=True,
+        download_name=row.file_name or os.path.basename(row.file_path),
+        mimetype=mime
+    )
+
+
+@app.route('/documents/<int:doc_id>', methods=['PATCH'])
+def documents_update(doc_id):
+    ensure_db()
+    row = DocumentRecord.query.filter_by(id=doc_id, status='active').first()
+    if not row:
+        return jsonify({'error': 'Documento no encontrado'}), 404
+    data = request.get_json() or {}
+    title = (data.get('title') or '').strip()
+    description = (data.get('description') or '').strip()
+    doc_date = (data.get('doc_date') or '').strip()
+    area_service = (data.get('area_service') or '').strip()
+    radicado = (data.get('radicado') or '').strip()
+    document_type = (data.get('document_type') or '').strip()
+    if title:
+        row.title = title
+    if document_type:
+        row.document_type = document_type
+    row.description = description
+    row.doc_date = doc_date
+    row.area_service = area_service
+    row.radicado = radicado
+    db.session.commit()
+    return jsonify({'item': row.to_dict()})
+
+
+@app.route('/documents/<int:doc_id>/archive', methods=['POST'])
+def documents_archive(doc_id):
+    ensure_db()
+    row = DocumentRecord.query.filter_by(id=doc_id, status='active').first()
+    if not row:
+        return jsonify({'error': 'Documento no encontrado'}), 404
+    row.status = 'archived'
+    db.session.commit()
+    return jsonify({'ok': True, 'id': doc_id})
 
 
 def write_headers_row(ws, row_idx, columns):

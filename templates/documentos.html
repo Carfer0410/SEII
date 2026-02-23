@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% set title = "Gestor interno de documentos" %}
+{% set subtitle = "Registro centralizado de soportes del proceso: con activo o generales sin activo." %}
+
+{% block content %}
+  <div class="stack module-screen docs-screen">
+    <section class="card docs-hero">
+      <div>
+        <h3>Archivo documental institucional</h3>
+        <p>Organiza contratos, salidas, oficios y soportes del proceso en un repositorio unico, claro y auditable.</p>
+      </div>
+      <div class="hero-badges">
+        <span class="badge">Con activo / General</span>
+        <span class="badge">Carga segura</span>
+        <span class="badge">Consulta rapida</span>
+      </div>
+    </section>
+
+    <section class="card docs-upload-card">
+      <h3>Nuevo documento</h3>
+      <div class="docs-intro">
+        <p class="docs-subtitle">Registra metadatos minimos y adjunta el archivo para mantener trazabilidad interna.</p>
+        <p class="docs-subtitle-strong">Cada documento queda organizado por tipo, fecha, area y vinculacion para consulta inmediata.</p>
+      </div>
+      <div class="docs-form-grid">
+        <label>
+          <span>Tipo de vinculacion</span>
+          <select id="docLinkType">
+            <option value="general">General (sin activo)</option>
+            <option value="asset">Con activo</option>
+          </select>
+        </label>
+        <label>
+          <span>Codigo activo</span>
+          <input id="docAssetCode" placeholder="Ej: 7015" />
+        </label>
+        <label>
+          <span>Nombre activo</span>
+          <input id="docAssetName" placeholder="Autocompletado por codigo" readonly />
+        </label>
+        <label>
+          <span>Tipo de documento</span>
+          <select id="docType"></select>
+        </label>
+        <label>
+          <span>Titulo / Asunto</span>
+          <input id="docTitle" placeholder="Ej: Contrato mantenimiento biomedico 2026" />
+        </label>
+        <label>
+          <span>Fecha documento</span>
+          <input id="docDate" type="date" />
+        </label>
+        <label>
+          <span>Area / Servicio</span>
+          <input id="docAreaService" placeholder="Ej: Activos Fijos" />
+        </label>
+        <label>
+          <span>Radicado / Consecutivo</span>
+          <input id="docRadicado" placeholder="Opcional" />
+        </label>
+        <label class="docs-col-2">
+          <span>Descripcion</span>
+          <textarea id="docDescription" rows="3" placeholder="Detalle breve del documento"></textarea>
+        </label>
+        <label class="docs-col-2">
+          <span>Archivo</span>
+          <input id="docFile" type="file" accept=".pdf,.xlsx,.xls,.csv,.png,.jpg,.jpeg,.webp,.doc,.docx,.txt" />
+          <small class="docs-file-help">Formatos permitidos: PDF, Excel, Word, imagen y TXT (max. 30 MB).</small>
+        </label>
+      </div>
+      <div class="row docs-actions">
+        <button id="docSaveBtn" type="button" class="docs-primary-btn">Subir documento</button>
+        <button id="docClearBtn" type="button" class="mini-btn docs-secondary-btn">Limpiar formulario</button>
+      </div>
+      <div id="docsStatus" class="status"></div>
+    </section>
+
+    <section class="card docs-repo-card">
+      <h3>Repositorio documental</h3>
+      <p class="docs-subtitle">Filtra por tipo, vinculacion y area para encontrar rapido cualquier soporte.</p>
+      <div class="docs-filters">
+        <input id="docsSearch" placeholder="Buscar por titulo, codigo activo, radicado o archivo..." />
+        <select id="docsFilterStatus">
+          <option value="active">Activos</option>
+          <option value="archived">Archivados</option>
+          <option value="all">Todos</option>
+        </select>
+        <select id="docsFilterLinkType">
+          <option value="">Todos</option>
+          <option value="asset">Con activo</option>
+          <option value="general">General</option>
+        </select>
+        <select id="docsFilterType">
+          <option value="">Todos los tipos</option>
+        </select>
+        <input id="docsFilterArea" placeholder="Filtrar por area/servicio" />
+        <button id="docsRefreshBtn" type="button" class="mini-btn">Refrescar</button>
+      </div>
+      <div id="docsTableWrap" class="docs-table-wrap"></div>
+    </section>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='documentos.js') }}"></script>
+{% endblock %}
