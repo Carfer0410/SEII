@@ -375,18 +375,23 @@ document.addEventListener("DOMContentLoaded", () => {
           <button type="button" class="pager-btn" data-closed-action="next" ${closedPage >= totalPages ? "disabled" : ""}>Siguiente</button>
         </div>
       </div>
-      <div class="closed-runs-wrap"><table class="closed-runs-table"><thead><tr>
-      <th>ID</th><th>PERIODO</th><th>NOMBRE</th><th>ESTADO</th><th>SERVICIO</th><th>ENCONTRADOS</th><th>NO ENCONTRADOS</th><th>INICIO</th><th>CIERRE</th>
+      <div class="closed-runs-wrap"><table class="closed-runs-table closed-runs-table-compact"><thead><tr>
+      <th>ID</th><th>JORNADA</th><th>SERVICIO</th><th>HALLAZGOS <span title="E=Encontrados, NE=No encontrados">(E/NE)</span></th><th>INICIO</th><th>CIERRE</th>
     </tr></thead><tbody>${cut
       .map(
         (r) => `<tr>
       <td>${App.escapeHtml(r.id)}</td>
-      <td>${App.escapeHtml(r.period_name || "-")}</td>
-      <td>${App.escapeHtml(r.name)}</td>
-      <td>${App.escapeHtml(r.status === "cancelled" ? "Anulada" : "Cerrada")}</td>
+      <td>
+        <div class="closed-run-title">${App.escapeHtml(r.name)}</div>
+        <div class="closed-run-sub">${App.escapeHtml(r.period_name || "-")}</div>
+      </td>
       <td>${App.escapeHtml(r.service_scope_label || r.service || "TODOS")}</td>
-      <td>${App.escapeHtml(r.found || 0)}</td>
-      <td>${App.escapeHtml(r.not_found || 0)}</td>
+      <td>
+        <div class="closed-metrics">
+          <span class="closed-metric ok">E: ${App.escapeHtml(r.found || 0)}</span>
+          <span class="closed-metric warn">NE: ${App.escapeHtml(r.not_found || 0)}</span>
+        </div>
+      </td>
       <td>${App.escapeHtml(
         String(r.started_at || "")
           .replace("T", " ")
