@@ -774,7 +774,11 @@ document.addEventListener('DOMContentLoaded', () => {
           .replace(/\n/g, '<br>');
       }
       if (okBtn) okBtn.textContent = okText;
-      if (cancelBtn) cancelBtn.textContent = cancelText;
+      if (cancelBtn) {
+        const hasCancel = String(cancelText || '').trim().length > 0;
+        cancelBtn.textContent = hasCancel ? cancelText : 'Cancelar';
+        cancelBtn.hidden = !hasCancel;
+      }
 
       overlay.hidden = false;
       okBtn?.addEventListener('click', onOk);

@@ -3073,6 +3073,21 @@ def issues_report_pdf():
     out = BytesIO()
     doc = SimpleDocTemplate(out, pagesize=letter, leftMargin=14 * mm, rightMargin=14 * mm, topMargin=18 * mm, bottomMargin=12 * mm)
     styles = getSampleStyleSheet()
+    brand_blue = colors.HexColor('#0A6FB3')
+    brand_blue_dark = colors.HexColor('#07507F')
+    brand_green = colors.HexColor('#1E9E57')
+    brand_yellow = colors.HexColor('#F2C94C')
+    brand_red = colors.HexColor('#C0392B')
+    brand_blue = colors.HexColor('#0A6FB3')
+    brand_blue_dark = colors.HexColor('#07507F')
+    brand_green = colors.HexColor('#1E9E57')
+    brand_yellow = colors.HexColor('#F2C94C')
+    brand_red = colors.HexColor('#C0392B')
+    brand_blue = colors.HexColor('#0A6FB3')
+    brand_blue_dark = colors.HexColor('#07507F')
+    brand_green = colors.HexColor('#1E9E57')
+    brand_yellow = colors.HexColor('#F2C94C')
+    brand_red = colors.HexColor('#C0392B')
     title_style = ParagraphStyle('it', parent=styles['Heading2'], fontSize=14, textColor=colors.HexColor('#0B4F6C'))
     normal = ParagraphStyle('in', parent=styles['Normal'], fontSize=8, leading=10)
     story = []
@@ -4121,18 +4136,23 @@ def dashboard_report_pdf():
     doc = SimpleDocTemplate(
         out,
         pagesize=letter,
-        leftMargin=18 * mm,
-        rightMargin=18 * mm,
+        leftMargin=14 * mm,
+        rightMargin=14 * mm,
         topMargin=16 * mm,
-        bottomMargin=14 * mm,
+        bottomMargin=12 * mm,
     )
     styles = getSampleStyleSheet()
+    brand_blue = colors.HexColor('#0A6FB3')
+    brand_blue_dark = colors.HexColor('#07507F')
+    brand_green = colors.HexColor('#1E9E57')
+    brand_yellow = colors.HexColor('#F2C94C')
+    brand_red = colors.HexColor('#C0392B')
     title_style = ParagraphStyle(
         'DashTitle',
         parent=styles['Heading1'],
         fontName='Helvetica-Bold',
-        fontSize=20,
-        textColor=colors.HexColor('#0B4F6C'),
+        fontSize=21,
+        textColor=brand_blue_dark,
         spaceAfter=6,
     )
     subtitle_style = ParagraphStyle(
@@ -4148,7 +4168,7 @@ def dashboard_report_pdf():
         parent=styles['Heading2'],
         fontName='Helvetica-Bold',
         fontSize=13,
-        textColor=colors.HexColor('#0B4F6C'),
+        textColor=brand_blue_dark,
         spaceBefore=6,
         spaceAfter=3,
     )
@@ -4167,7 +4187,30 @@ def dashboard_report_pdf():
     generated_at = meta.get('generated_at') or now_iso()
 
     story = []
-    story.append(Paragraph('Reporte Ejecutivo de Inventario', title_style))
+    hero = Table([[
+        Paragraph(
+            '<font color="white"><b>Dashboard Institucional de Inventario</b></font><br/>'
+            '<font color="white">Hospital Francisco de Paula Santander E.S.E.</font>',
+            ParagraphStyle(
+                'HeroTitle',
+                parent=styles['Normal'],
+                fontName='Helvetica-Bold',
+                fontSize=15,
+                leading=18,
+            )
+        )
+    ]], colWidths=[182 * mm])
+    hero.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), brand_blue),
+        ('BOX', (0, 0), (-1, -1), 1.0, brand_blue_dark),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+        ('TOPPADDING', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+    ]))
+    story.append(hero)
+    story.append(Spacer(1, 5))
+    story.append(Paragraph('Reporte Ejecutivo Dashboard Inventario', title_style))
     story.append(Paragraph(
         f'Fecha: {generated_at} &nbsp;&nbsp;|&nbsp;&nbsp; Periodo: {period_name} '
         f'&nbsp;&nbsp;|&nbsp;&nbsp; Jornada: {run_name} '
@@ -4177,14 +4220,14 @@ def dashboard_report_pdf():
 
     narrative = build_executive_narrative(payload)
     plan = build_executive_action_plan(payload)
-    story.append(Paragraph('Objetivo general', section_style))
+    story.append(Paragraph('Objetivo General', section_style))
     story.append(Paragraph(narrative.get('objetivo_general', ''), subtitle_style))
-    story.append(Paragraph('Objetivos especificos', section_style))
+    story.append(Paragraph('Objetivos Especificos', section_style))
     obj_lines = '<br/>'.join([f'- {x}' for x in narrative.get('objetivos_especificos', [])])
     story.append(Paragraph(obj_lines or 'Sin objetivos definidos.', subtitle_style))
-    story.append(Paragraph('Resumen ejecutivo', section_style))
+    story.append(Paragraph('Resumen Ejecutivo', section_style))
     story.append(Paragraph(narrative.get('resumen', ''), subtitle_style))
-    story.append(Paragraph('Interpretacion contextual', section_style))
+    story.append(Paragraph('Interpretacion Contextual', section_style))
     int_lines = '<br/>'.join([f'- {x}' for x in narrative.get('interpretacion', [])])
     story.append(Paragraph(int_lines or 'Sin interpretacion disponible.', subtitle_style))
     story.append(Spacer(1, 3))
@@ -4217,7 +4260,10 @@ def dashboard_report_pdf():
     ]]
     kpi_table = Table(kpi_data, colWidths=[42 * mm, 42 * mm, 42 * mm, 42 * mm])
     kpi_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (3, 0), colors.HexColor('#EAF4FA')),
+        ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#E8F2FC')),
+        ('BACKGROUND', (1, 0), (1, 0), colors.HexColor('#E9F7EF')),
+        ('BACKGROUND', (2, 0), (2, 0), colors.HexColor('#FFF0F0')),
+        ('BACKGROUND', (3, 0), (3, 0), colors.HexColor('#FFF7E6')),
         ('BOX', (0, 0), (-1, -1), 0.6, colors.HexColor('#BFD5E3')),
         ('INNERGRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#D7E5EE')),
         ('LEFTPADDING', (0, 0), (-1, -1), 8),
@@ -4243,7 +4289,7 @@ def dashboard_report_pdf():
     ]]
     coverage_table = Table(coverage_data, colWidths=[42 * mm, 42 * mm, 42 * mm, 42 * mm])
     coverage_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (3, 0), colors.HexColor('#EEF8EF')),
+        ('BACKGROUND', (0, 0), (3, 0), colors.HexColor('#E9F7EF')),
         ('BOX', (0, 0), (-1, -1), 0.6, colors.HexColor('#C7E5C9')),
         ('INNERGRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#DDF0DF')),
         ('LEFTPADDING', (0, 0), (-1, -1), 8),
@@ -4268,7 +4314,7 @@ def dashboard_report_pdf():
     ]]
     financial_table = Table(financial_data, colWidths=[42 * mm, 42 * mm, 42 * mm, 42 * mm])
     financial_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (3, 0), colors.HexColor('#FFF3E8')),
+        ('BACKGROUND', (0, 0), (3, 0), colors.HexColor('#FFF6E8')),
         ('BOX', (0, 0), (-1, -1), 0.6, colors.HexColor('#E6D0BC')),
         ('INNERGRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#F0E1D2')),
         ('LEFTPADDING', (0, 0), (-1, -1), 8),
@@ -4294,20 +4340,21 @@ def dashboard_report_pdf():
     pie.data = [found_v, not_found_v, pending_v] if total_v > 0 else [1]
     pie.labels = ['Encontrados', 'No encontrados', 'Pendientes'] if total_v > 0 else ['Sin datos']
     if total_v > 0:
-        pie.slices[0].fillColor = colors.HexColor('#0D7A52')
-        pie.slices[1].fillColor = colors.HexColor('#B42318')
-        pie.slices[2].fillColor = colors.HexColor('#D4A017')
+        pie.slices[0].fillColor = brand_green
+        pie.slices[1].fillColor = brand_red
+        pie.slices[2].fillColor = brand_yellow
+        pie.slices[1].popout = 2
     else:
         pie.slices[0].fillColor = colors.HexColor('#CBD5E1')
     pie_drawing.add(pie)
-    pie_drawing.add(String(95 * mm, 40 * mm, f'Encontrados: {found_v} ({k.get("found_pct", 0)}%)', fontSize=9, fillColor=colors.HexColor('#0D7A52')))
-    pie_drawing.add(String(95 * mm, 30 * mm, f'No encontrados: {not_found_v} ({k.get("not_found_pct", 0)}%)', fontSize=9, fillColor=colors.HexColor('#B42318')))
+    pie_drawing.add(String(95 * mm, 40 * mm, f'Encontrados: {found_v} ({k.get("found_pct", 0)}%)', fontSize=9, fillColor=brand_green))
+    pie_drawing.add(String(95 * mm, 30 * mm, f'No encontrados: {not_found_v} ({k.get("not_found_pct", 0)}%)', fontSize=9, fillColor=brand_red))
     pie_drawing.add(String(95 * mm, 20 * mm, f'Pendientes: {pending_v}', fontSize=9, fillColor=colors.HexColor('#9A6700')))
     story.append(pie_drawing)
     story.append(Spacer(1, 4))
 
     insights = payload.get('insights', [])
-    story.append(Paragraph('Mensajes clave para alta gerencia', section_style))
+    story.append(Paragraph('Mensajes Clave para Alta Gerencia', section_style))
     if insights:
         bullets = ''.join([f'• {i}<br/>' for i in insights])
         story.append(Paragraph(bullets, subtitle_style))
@@ -4317,7 +4364,7 @@ def dashboard_report_pdf():
 
     def make_chart(title, rows, top_n=15):
         drawing = Drawing(520, 200)
-        drawing.add(String(0, 186, title, fontName='Helvetica-Bold', fontSize=11, fillColor=colors.HexColor('#0B4F6C')))
+        drawing.add(String(0, 186, title, fontName='Helvetica-Bold', fontSize=11, fillColor=brand_blue_dark))
         if not rows:
             drawing.add(String(0, 162, 'Sin datos', fontName='Helvetica', fontSize=9, fillColor=colors.HexColor('#7A8794')))
             return drawing
@@ -4341,8 +4388,15 @@ def dashboard_report_pdf():
         chart.valueAxis.labels.fontSize = 7
         chart.valueAxis.visibleGrid = 1
         chart.valueAxis.gridStrokeColor = colors.HexColor('#DCE7EE')
-        chart.bars[0].fillColor = colors.HexColor('#0A7EA4')
+        chart.bars[0].fillColor = brand_blue
         chart.barSpacing = 2
+        chart.groupSpacing = 4
+        palette = [brand_blue, colors.HexColor('#118AB2'), brand_green, colors.HexColor('#2FAE66'), brand_yellow]
+        for i in range(len(values)):
+            try:
+                chart.bars[(0, i)].fillColor = palette[i % len(palette)]
+            except Exception:
+                pass
         drawing.add(chart)
         return drawing
 
@@ -4354,7 +4408,7 @@ def dashboard_report_pdf():
     story.append(make_chart('Activos por área', payload.get('by_area', []), top_n=15))
     story.append(Spacer(1, 4))
 
-    story.append(Paragraph('Activos criticos y costosos no encontrados', section_style))
+    story.append(Paragraph('Activos Criticos y Costosos No Encontrados', section_style))
     critical_rows = payload.get('critical_not_found', [])
     if not critical_rows:
         story.append(Paragraph('No se identificaron activos criticos no encontrados en este corte.', subtitle_style))
@@ -4399,7 +4453,7 @@ def dashboard_report_pdf():
         story.append(critical_table)
     story.append(Spacer(1, 4))
 
-    story.append(Paragraph('Anexo operativo: activos no encontrados', section_style))
+    story.append(Paragraph('Anexo Operativo: Activos No Encontrados', section_style))
     not_found_rows = payload.get('not_found_assets', [])
     if not not_found_rows:
         story.append(Paragraph('No hay activos no encontrados para este corte.', subtitle_style))
@@ -4475,8 +4529,8 @@ def dashboard_report_pdf():
         story.append(table)
         story.append(Spacer(1, 4))
 
-    value_table('Impacto economico de no encontrados por servicio', payload.get('top_not_found_by_service_value', []))
-    value_table('Impacto economico de no encontrados por tipo de equipo', payload.get('top_not_found_by_type_value', []))
+    value_table('Impacto Economico de No Encontrados por Servicio', payload.get('top_not_found_by_service_value', []))
+    value_table('Impacto Economico de No Encontrados por Tipo de Equipo', payload.get('top_not_found_by_type_value', []))
     story.append(PageBreak())
 
     def section_table(title, rows):
@@ -4506,7 +4560,7 @@ def dashboard_report_pdf():
 
         table = Table(data, colWidths=[77 * mm, 16 * mm, 20 * mm, 25 * mm, 19 * mm, 22 * mm], repeatRows=1)
         table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0B4F6C')),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#07507F')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -4521,12 +4575,12 @@ def dashboard_report_pdf():
         story.append(table)
         story.append(Spacer(1, 4))
 
-    section_table('Detalle completo por servicio', payload.get('by_service', []))
-    section_table('Detalle completo por tipo de equipo', payload.get('by_type', []))
+    section_table('Detalle Completo por Servicio', payload.get('by_service', []))
+    section_table('Detalle Completo por Tipo de Equipo', payload.get('by_type', []))
     section_table('Detalle completo por área', payload.get('by_area', []))
 
     story.append(PageBreak())
-    story.append(Paragraph('Conclusion final', section_style))
+    story.append(Paragraph('Conclusion Final', section_style))
     story.append(Paragraph(build_executive_conclusion(payload), subtitle_style))
 
     page_header = make_pdf_page_header(

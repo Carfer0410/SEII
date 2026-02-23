@@ -28,6 +28,24 @@ document.addEventListener('DOMContentLoaded', () => {
   let lastPayload = null;
   let runsCache = [];
 
+  const DASHBOARD_CHART_THEME = {
+    axisText: '#2f556f',
+    grid: 'rgba(31, 95, 143, 0.14)',
+    tooltipBg: 'rgba(15, 44, 66, 0.94)',
+    tooltipTitle: '#e8f7ff',
+    tooltipBody: '#cce9f7',
+    stroke: 'rgba(255,255,255,0.95)',
+    barPalette: [
+      ['#24a9de', '#1689c2'],
+      ['#1f9b4a', '#2aa65a'],
+      ['#1f5f8f', '#2f76a8'],
+      ['#f2c335', '#dfab1c'],
+      ['#2e8ec2', '#1f5f8f'],
+      ['#56bb63', '#2f9a4d'],
+    ],
+    piePalette: ['#1f9b4a', '#f26a5b', '#f2c335'],
+  };
+
   function selectedRunId() {
     return runSelect.value ? Number(runSelect.value) : null;
   }
@@ -58,20 +76,47 @@ document.addEventListener('DOMContentLoaded', () => {
   function shortenLabel(text, maxLen = 34) {
     const s = String(text || '');
     if (s.length <= maxLen) return s;
-    return `${s.slice(0, maxLen - 1)}…`;
+    return `${s.slice(0, maxLen - 1)}...`;
+  }
+
+  function getBarGradient(ctx, chartArea, index) {
+    const pair = DASHBOARD_CHART_THEME.barPalette[index % DASHBOARD_CHART_THEME.barPalette.length];
+    const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+    gradient.addColorStop(0, pair[0]);
+    gradient.addColorStop(1, pair[1]);
+    return gradient;
   }
 
   function renderBarChart(instance, canvasEl, rows, label, topN) {
     if (instance) instance.destroy();
     const limitedRows = (rows || []).slice(0, topN);
-    const dynamicHeight = Math.max(320, limitedRows.length * 28);
+    const dynamicHeight = Math.max(320, limitedRows.length * 30);
     const wrapper = canvasEl.closest('.chart-wrap');
-    if (wrapper) {
-      wrapper.style.height = `${Math.min(dynamicHeight, 560)}px`;
-    }
+    if (wrapper) wrapper.style.height = `${Math.min(dynamicHeight, 560)}px`;
     canvasEl.height = dynamicHeight;
     canvasEl.style.width = '100%';
     canvasEl.style.height = `${dynamicHeight}px`;
+
+    const valueLabelPlugin = {
+      id: `valueLabel-${label}`,
+      afterDatasetsDraw(chart) {
+        const { ctx } = chart;
+        const dataset = chart.data.datasets[0];
+        const meta = chart.getDatasetMeta(0);
+        ctx.save();
+        ctx.fillStyle = '#1f5f8f';
+        ctx.font = '700 11px "Segoe UI", sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        meta.data.forEach((bar, i) => {
+          const value = Number(dataset.data[i] || 0);
+          const pos = bar.getProps(['x', 'y'], true);
+          ctx.fillText(String(value), pos.x + 8, pos.y);
+        });
+        ctx.restore();
+      },
+    };
+
     return new Chart(canvasEl.getContext('2d'), {
       type: 'bar',
       plugins: [{
@@ -80,31 +125,62 @@ document.addEventListener('DOMContentLoaded', () => {
           const { ctx, width, height } = chart;
           ctx.clearRect(0, 0, width, height);
         },
-      }],
+      }, valueLabelPlugin],
       data: {
         labels: limitedRows.map((r) => String(r.name || '')),
-        datasets: [{ label, data: limitedRows.map((r) => r.total), backgroundColor: '#0a7ea4' }],
+        datasets: [{
+          label,
+          data: limitedRows.map((r) => Number(r.total || 0)),
+          borderWidth: 1,
+          borderColor: DASHBOARD_CHART_THEME.stroke,
+          borderRadius: 8,
+          borderSkipped: false,
+          maxBarThickness: 24,
+          backgroundColor: (context) => {
+            const { chart, dataIndex } = context;
+            const { ctx, chartArea } = chart;
+            if (!chartArea) return '#1f5f8f';
+            return getBarGradient(ctx, chartArea, dataIndex);
+          },
+        }],
       },
       options: {
         indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
-        animation: false,
+        animation: { duration: 700, easing: 'easeOutQuart' },
         plugins: {
           legend: { display: false },
           tooltip: {
+            backgroundColor: DASHBOARD_CHART_THEME.tooltipBg,
+            titleColor: DASHBOARD_CHART_THEME.tooltipTitle,
+            bodyColor: DASHBOARD_CHART_THEME.tooltipBody,
+            borderColor: 'rgba(54, 132, 179, 0.5)',
+            borderWidth: 1,
+            padding: 10,
+            displayColors: false,
             callbacks: {
               title: (items) => items?.[0]?.label || '',
+              label: (item) => `${label}: ${Number(item.parsed.x || 0).toLocaleString('es-CO')}`,
             },
           },
         },
         scales: {
-          x: { beginAtZero: true },
+          x: {
+            beginAtZero: true,
+            grid: { color: DASHBOARD_CHART_THEME.grid, drawBorder: false },
+            ticks: {
+              color: DASHBOARD_CHART_THEME.axisText,
+              font: { size: 11, weight: '600' },
+            },
+          },
           y: {
+            grid: { display: false, drawBorder: false },
             ticks: {
               autoSkip: false,
               callback: (_, idx, ticks) => shortenLabel(ticks[idx].label),
-              font: { size: 11 },
+              color: DASHBOARD_CHART_THEME.axisText,
+              font: { size: 11, weight: '600' },
             },
           },
         },
@@ -119,28 +195,46 @@ document.addEventListener('DOMContentLoaded', () => {
     const notFound = Number(kpis?.not_found || 0);
     const pending = Number(kpis?.pending || 0);
     return new Chart(canvasEl.getContext('2d'), {
-      type: 'pie',
+      type: 'doughnut',
       data: {
         labels: ['Encontrados', 'No encontrados', 'Pendientes'],
         datasets: [{
           data: [found, notFound, pending],
-          backgroundColor: ['#0d7a52', '#b42318', '#d4a017'],
+          backgroundColor: DASHBOARD_CHART_THEME.piePalette,
           borderColor: '#ffffff',
-          borderWidth: 2,
+          borderWidth: 3,
+          hoverOffset: 8,
         }],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        cutout: '58%',
+        animation: { duration: 800, easing: 'easeOutQuart' },
         plugins: {
-          legend: { position: 'bottom' },
+          legend: {
+            position: 'bottom',
+            labels: {
+              usePointStyle: true,
+              pointStyle: 'circle',
+              padding: 16,
+              color: DASHBOARD_CHART_THEME.axisText,
+              font: { size: 12, weight: '700' },
+            },
+          },
           tooltip: {
+            backgroundColor: DASHBOARD_CHART_THEME.tooltipBg,
+            titleColor: DASHBOARD_CHART_THEME.tooltipTitle,
+            bodyColor: DASHBOARD_CHART_THEME.tooltipBody,
+            borderColor: 'rgba(54, 132, 179, 0.5)',
+            borderWidth: 1,
+            padding: 10,
             callbacks: {
               label: (ctx) => {
                 const value = Number(ctx.parsed || 0);
                 const total = [found, notFound, pending].reduce((a, b) => a + b, 0);
                 const pct = total ? ((value / total) * 100).toFixed(1) : '0.0';
-                return `${ctx.label}: ${value} (${pct}%)`;
+                return `${ctx.label}: ${value.toLocaleString('es-CO')} (${pct}%)`;
               },
             },
           },
@@ -286,7 +380,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const topArea = Number(topAreaEl?.value || 10);
     serviceChart = renderBarChart(serviceChart, serviceChartEl, data.by_service || [], 'Servicios', topService);
     typeChart = renderBarChart(typeChart, typeChartEl, data.by_type || [], 'Tipos', topType);
-    areaChart = renderBarChart(areaChart, areaChartEl, data.by_area || [], 'Áreas', topArea);
+    areaChart = renderBarChart(areaChart, areaChartEl, data.by_area || [], 'Areas', topArea);
     statusPieChart = renderStatusPie(statusPieChart, statusPieChartEl, k);
     renderNotFoundSpecific(data);
     App.setStatus(statusEl, `Actualizado: ${data.meta?.generated_at || ''}`);
