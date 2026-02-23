@@ -8,15 +8,17 @@
   </head>
   <body>
     <header class="nav-top">
-      <div class="nav-brand">
-        <img src="{{ url_for('logo_file') }}" alt="Logo institución" class="brand-logo-img" />
-        <div class="brand-text">
-          <h1>Hospital Francisco de Paula Santander</h1>
-          <p>SEII · Sistema Especializado de Inventario Institucional</p>
+      <div class="nav-shell">
+        <div class="nav-brand">
+          <img src="{{ url_for('logo_file') }}" alt="Logo institucion" class="brand-logo-img" />
+          <div class="brand-text">
+            <h1>Hospital Francisco de Paula Santander</h1>
+            <p>SEII · Sistema Especializado de Inventario Institucional</p>
+          </div>
         </div>
+        <div class="app-pill">SEII</div>
       </div>
-      <div class="app-pill">SEII</div>
-      <nav class="menu menu-top">
+      <nav class="menu menu-top" aria-label="Navegacion principal">
         <a class="{{ 'active' if request.path == '/' else '' }}" href="{{ url_for('index') }}">Inicio</a>
         <a class="{{ 'active' if request.path == '/jornadas' else '' }}" href="{{ url_for('jornadas_page') }}">Jornadas</a>
         <a class="{{ 'active' if request.path == '/cronograma' else '' }}" href="{{ url_for('cronograma_page') }}">Cronograma</a>
@@ -27,17 +29,21 @@
         <a class="{{ 'active' if request.path == '/dashboard' else '' }}" href="{{ url_for('dashboard_page') }}">Dashboard</a>
       </nav>
     </header>
-    <main class="content content-full">
-      <header class="topbar">
-        <div class="topbar-row">
-          <h2>{{ title }}</h2>
-        </div>
-        <p>{{ subtitle or '' }}</p>
-      </header>
-      <section>
-        {% block content %}{% endblock %}
-      </section>
+
+    <main class="content content-full app-shell">
+      <div class="page-shell">
+        <header class="topbar">
+          <div class="topbar-row">
+            <h2>{{ title }}</h2>
+          </div>
+          <p>{{ subtitle or '' }}</p>
+        </header>
+        <section>
+          {% block content %}{% endblock %}
+        </section>
+      </div>
     </main>
+
     <script src="{{ url_for('static', filename='common.js') }}"></script>
     {% block scripts %}{% endblock %}
   </body>

@@ -3,7 +3,7 @@
 {% set subtitle = "Gestion institucional de activos en proceso de baja con control por estado y tipo." %}
 
 {% block content %}
-  <div class="stack">
+  <div class="stack module-screen">
     <div class="card report-hero">
       <div>
         <h3>Gestion de bajas</h3>
@@ -39,12 +39,14 @@
           <option value="Aprobada para baja">Aprobada para baja</option>
           <option value="Rechazada">Rechazada</option>
         </select>
+        <button id="refreshDisposalsBtn">Refrescar</button>
+      </div>
+      <div class="row report-actions">
         <button id="exportGeneralExcelBtn" type="button">General Excel</button>
         <button id="exportGeneralPdfBtn" type="button">General PDF</button>
         <button id="exportControlExcelBtn" type="button">Control Excel</button>
         <button id="exportControlPdfBtn" type="button">Control PDF</button>
         <button id="reclassifyBtn" type="button">Reclasificar todo</button>
-        <button id="refreshDisposalsBtn">Refrescar</button>
       </div>
       <div id="disposalsContainer"></div>
     </div>

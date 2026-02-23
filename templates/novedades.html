@@ -3,7 +3,7 @@
 {% set subtitle = "Detecta discrepancias, prioriza riesgo y gestiona cierre con trazabilidad por periodo." %}
 
 {% block content %}
-  <div class="stack">
+  <div class="stack module-screen">
     <div class="card report-hero">
       <h3>Motor de discrepancias</h3>
       <p>Analiza automaticamente no encontrados criticos, inconsistencias de ubicacion/responsable, activos sin identificadores y riesgos de baja pendiente.</p>
@@ -23,6 +23,8 @@
           <span class="switch-slider" aria-hidden="true"></span>
           <span class="switch-text">Alcance completo: analizar toda la base institucional</span>
         </label>
+      </div>
+      <div class="row report-actions">
         <button id="issuesScanBtn" type="button">Analizar novedades</button>
         <button id="issuesRefreshBtn" type="button">Actualizar tablero</button>
         <button id="issuesPdfBtn" type="button">Exportar PDF comite</button>

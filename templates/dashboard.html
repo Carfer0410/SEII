@@ -3,7 +3,7 @@
 {% set subtitle = "Indicadores ejecutivos para comites, control institucional y toma de decisiones." %}
 
 {% block content %}
-  <div class="stack">
+  <div class="stack module-screen">
     <div class="card report-hero">
       <div>
         <h3>Control ejecutivo de inventario</h3>
@@ -30,74 +30,80 @@
       <div id="dashboardKpis" class="kpis"></div>
     </div>
 
-    <div class="card">
-      <h3>Activos por servicio</h3>
-      <div class="row">
-        <label for="topService">Top:</label>
-        <select id="topService">
-          <option value="10">10</option>
-          <option value="15" selected>15</option>
-          <option value="20">20</option>
-          <option value="30">30</option>
-          <option value="50">50</option>
-          <option value="100">100</option>
-        </select>
+    <div class="grid-2">
+      <div class="card">
+        <h3>Activos por servicio</h3>
+        <div class="row">
+          <label for="topService">Top:</label>
+          <select id="topService">
+            <option value="10">10</option>
+            <option value="15" selected>15</option>
+            <option value="20">20</option>
+            <option value="30">30</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
+        <div class="chart-wrap"><canvas id="serviceChart"></canvas></div>
       </div>
-      <div class="chart-wrap"><canvas id="serviceChart"></canvas></div>
-    </div>
 
-    <div class="card">
-      <h3>Activos por tipo de equipo</h3>
-      <div class="row">
-        <label for="topType">Top:</label>
-        <select id="topType">
-          <option value="10">10</option>
-          <option value="15" selected>15</option>
-          <option value="20">20</option>
-          <option value="30">30</option>
-          <option value="50">50</option>
-          <option value="100">100</option>
-        </select>
+      <div class="card">
+        <h3>Activos por tipo de equipo</h3>
+        <div class="row">
+          <label for="topType">Top:</label>
+          <select id="topType">
+            <option value="10">10</option>
+            <option value="15" selected>15</option>
+            <option value="20">20</option>
+            <option value="30">30</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
+        <div class="chart-wrap"><canvas id="typeChart"></canvas></div>
       </div>
-      <div class="chart-wrap"><canvas id="typeChart"></canvas></div>
     </div>
 
-    <div class="card">
-      <h3>Activos por area</h3>
-      <div class="row">
-        <label for="topArea">Top:</label>
-        <select id="topArea">
-          <option value="10" selected>10</option>
-          <option value="15">15</option>
-          <option value="20">20</option>
-          <option value="30">30</option>
-          <option value="50">50</option>
-          <option value="100">100</option>
-        </select>
+    <div class="grid-2">
+      <div class="card">
+        <h3>Activos por area</h3>
+        <div class="row">
+          <label for="topArea">Top:</label>
+          <select id="topArea">
+            <option value="10" selected>10</option>
+            <option value="15">15</option>
+            <option value="20">20</option>
+            <option value="30">30</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
+        <div class="chart-wrap"><canvas id="areaChart"></canvas></div>
       </div>
-      <div class="chart-wrap"><canvas id="areaChart"></canvas></div>
-    </div>
 
-    <div class="card">
-      <h3>Distribucion del estado</h3>
-      <div class="chart-wrap"><canvas id="statusPieChart"></canvas></div>
-    </div>
-
-    <div class="card">
-      <h3>Comparativo entre periodos</h3>
-      <div class="row">
-        <select id="comparePeriodA"><option value="">Periodo A</option></select>
-        <select id="comparePeriodB"><option value="">Periodo B</option></select>
-        <button id="comparePeriodsBtn" type="button">Comparar</button>
+      <div class="card">
+        <h3>Distribucion del estado</h3>
+        <div class="chart-wrap"><canvas id="statusPieChart"></canvas></div>
       </div>
-      <div id="compareStatus" class="status"></div>
-      <div id="compareContainer"></div>
     </div>
 
-    <div class="card">
-      <h3>Activos no encontrados (detalle)</h3>
-      <div id="notFoundSpecificStatus" class="field-help"></div>
-      <div id="notFoundSpecificContainer"></div>
+    <div class="grid-2">
+      <div class="card">
+        <h3>Comparativo entre periodos</h3>
+        <div class="row">
+          <select id="comparePeriodA"><option value="">Periodo A</option></select>
+          <select id="comparePeriodB"><option value="">Periodo B</option></select>
+          <button id="comparePeriodsBtn" type="button">Comparar</button>
+        </div>
+        <div id="compareStatus" class="status"></div>
+        <div id="compareContainer"></div>
+      </div>
+
+      <div class="card">
+        <h3>Activos no encontrados (detalle)</h3>
+        <div id="notFoundSpecificStatus" class="field-help"></div>
+        <div id="notFoundSpecificContainer"></div>
+      </div>
     </div>
   </div>
 {% endblock %}

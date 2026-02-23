@@ -3,7 +3,7 @@
 {% set subtitle = "Consulta, escaneo y validacion de activos en tiempo real." %}
 
 {% block content %}
-  <div class="stack inv-screen">
+  <div class="stack inv-screen module-screen">
     <div class="card inv-hero">
       <h3>Operacion de inventario</h3>
       <div class="hero-badges">
@@ -12,7 +12,7 @@
         <span class="badge">Conciliacion</span>
         <span class="badge">Exportacion</span>
       </div>
-      <div class="row" style="margin-top:8px;">
+      <div class="row inv-hero-actions">
         <button id="startGuideBtn" type="button">Ver guia rapida</button>
       </div>
       <p class="field-help">
@@ -73,7 +73,7 @@
         </div>
         <div class="inv-block">
           <label>Camara (alternativa)</label>
-          <div id="reader" style="width: 320px"></div>
+          <div id="reader"></div>
           <div class="row">
             <button id="startCamera" type="button">Iniciar camara</button>
             <button id="stopCamera" type="button">Detener camara</button>
