@@ -28,11 +28,24 @@
       </div>
       <div id="dashboardStatus" class="status"></div>
       <div id="dashboardKpis" class="kpis"></div>
+      <div id="dashboardExecutiveNotes" class="field-help" style="margin-top:10px;"></div>
     </div>
 
     <div class="grid-2">
       <div class="card">
-        <h3>Activos por servicio</h3>
+        <h3>Valor no encontrado por servicio (impacto economico)</h3>
+        <div class="chart-wrap"><canvas id="serviceRiskValueChart"></canvas></div>
+      </div>
+
+      <div class="card">
+        <h3>Activos criticos no encontrados (impacto en riesgo)</h3>
+        <div class="chart-wrap"><canvas id="criticalRiskChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>Activos por servicio (contexto operativo)</h3>
         <div class="row">
           <label for="topService">Top:</label>
           <select id="topService">
@@ -48,7 +61,7 @@
       </div>
 
       <div class="card">
-        <h3>Activos por tipo de equipo</h3>
+        <h3>Activos por tipo de equipo (contexto operativo)</h3>
         <div class="row">
           <label for="topType">Top:</label>
           <select id="topType">
@@ -66,7 +79,7 @@
 
     <div class="grid-2">
       <div class="card">
-        <h3>Activos por area</h3>
+        <h3>Activos por area (contexto operativo)</h3>
         <div class="row">
           <label for="topArea">Top:</label>
           <select id="topArea">

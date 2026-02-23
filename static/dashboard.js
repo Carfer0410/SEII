@@ -6,10 +6,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const exportPdfBtn = document.getElementById('exportDashboardPdfBtn');
   const statusEl = document.getElementById('dashboardStatus');
   const kpisEl = document.getElementById('dashboardKpis');
+  const executiveNotesEl = document.getElementById('dashboardExecutiveNotes');
   const serviceChartEl = document.getElementById('serviceChart');
   const typeChartEl = document.getElementById('typeChart');
   const areaChartEl = document.getElementById('areaChart');
   const statusPieChartEl = document.getElementById('statusPieChart');
+  const serviceRiskValueChartEl = document.getElementById('serviceRiskValueChart');
+  const criticalRiskChartEl = document.getElementById('criticalRiskChart');
   const topServiceEl = document.getElementById('topService');
   const topTypeEl = document.getElementById('topType');
   const topAreaEl = document.getElementById('topArea');
@@ -25,6 +28,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let typeChart = null;
   let areaChart = null;
   let statusPieChart = null;
+  let serviceRiskValueChart = null;
+  let criticalRiskChart = null;
   let lastPayload = null;
   let runsCache = [];
 
@@ -64,12 +69,15 @@ document.addEventListener('DOMContentLoaded', () => {
   function clearDashboardView(message = 'Selecciona un periodo para consultar dashboard.') {
     lastPayload = null;
     if (kpisEl) kpisEl.innerHTML = '<div class="empty-mini">Sin datos para mostrar.</div>';
+    if (executiveNotesEl) executiveNotesEl.textContent = '';
     if (notFoundSpecificContainer) notFoundSpecificContainer.innerHTML = '<div class="empty-mini">Sin datos para mostrar.</div>';
     if (notFoundSpecificStatus) notFoundSpecificStatus.textContent = '';
     if (serviceChart) { serviceChart.destroy(); serviceChart = null; }
     if (typeChart) { typeChart.destroy(); typeChart = null; }
     if (areaChart) { areaChart.destroy(); areaChart = null; }
     if (statusPieChart) { statusPieChart.destroy(); statusPieChart = null; }
+    if (serviceRiskValueChart) { serviceRiskValueChart.destroy(); serviceRiskValueChart = null; }
+    if (criticalRiskChart) { criticalRiskChart.destroy(); criticalRiskChart = null; }
     App.setStatus(statusEl, message, true);
   }
 
@@ -85,6 +93,10 @@ document.addEventListener('DOMContentLoaded', () => {
     gradient.addColorStop(0, pair[0]);
     gradient.addColorStop(1, pair[1]);
     return gradient;
+  }
+
+  function fmtCop(value) {
+    return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(Number(value || 0));
   }
 
   function renderBarChart(instance, canvasEl, rows, label, topN) {
@@ -243,6 +255,130 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function renderValueImpactChart(instance, canvasEl, rows, topN = 10) {
+    if (!canvasEl || typeof Chart === 'undefined') return instance;
+    if (instance) instance.destroy();
+    const dataRows = (rows || []).slice(0, topN);
+    return new Chart(canvasEl.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: dataRows.map((r) => String(r.name || 'N/D')),
+        datasets: [{
+          label: 'Valor no encontrado',
+          data: dataRows.map((r) => Number(r.not_found_value || 0)),
+          borderWidth: 1,
+          borderColor: DASHBOARD_CHART_THEME.stroke,
+          borderRadius: 8,
+          borderSkipped: false,
+          maxBarThickness: 24,
+          backgroundColor: (context) => {
+            const { chart, dataIndex } = context;
+            const { ctx, chartArea } = chart;
+            if (!chartArea) return '#1f5f8f';
+            return getBarGradient(ctx, chartArea, dataIndex);
+          },
+        }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 700, easing: 'easeOutQuart' },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: DASHBOARD_CHART_THEME.tooltipBg,
+            titleColor: DASHBOARD_CHART_THEME.tooltipTitle,
+            bodyColor: DASHBOARD_CHART_THEME.tooltipBody,
+            borderColor: 'rgba(54, 132, 179, 0.5)',
+            borderWidth: 1,
+            callbacks: { label: (item) => fmtCop(item.parsed.x || 0) },
+          },
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            grid: { color: DASHBOARD_CHART_THEME.grid, drawBorder: false },
+            ticks: {
+              color: DASHBOARD_CHART_THEME.axisText,
+              font: { size: 11, weight: '600' },
+              callback: (value) => {
+                const n = Number(value || 0);
+                if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
+                if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+                if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`;
+                return `${n}`;
+              },
+            },
+          },
+          y: {
+            grid: { display: false, drawBorder: false },
+            ticks: {
+              autoSkip: false,
+              callback: (_, idx, ticks) => shortenLabel(ticks[idx].label, 28),
+              color: DASHBOARD_CHART_THEME.axisText,
+              font: { size: 11, weight: '600' },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  function renderCriticalRiskChart(instance, canvasEl, rows, topN = 10) {
+    if (!canvasEl || typeof Chart === 'undefined') return instance;
+    if (instance) instance.destroy();
+    const dataRows = (rows || []).slice(0, topN);
+    return new Chart(canvasEl.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: dataRows.map((r) => String(r.code || '').trim() || 'N/D'),
+        datasets: [{
+          label: 'Valor libro en riesgo',
+          data: dataRows.map((r) => Number(r.value || 0)),
+          backgroundColor: '#f26a5b',
+          borderColor: '#ffffff',
+          borderWidth: 1,
+          borderRadius: 8,
+          borderSkipped: false,
+          maxBarThickness: 28,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items) => {
+                const idx = items?.[0]?.dataIndex || 0;
+                const r = dataRows[idx] || {};
+                return `${r.code || ''} - ${r.name || ''}`;
+              },
+              label: (item) => {
+                const idx = item?.dataIndex || 0;
+                const r = dataRows[idx] || {};
+                return `${fmtCop(r.value || 0)} | Criticidad: ${r.critical_score || 0}`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { color: DASHBOARD_CHART_THEME.axisText, font: { size: 11, weight: '700' } },
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: DASHBOARD_CHART_THEME.grid, drawBorder: false },
+            ticks: { color: DASHBOARD_CHART_THEME.axisText, font: { size: 11, weight: '600' } },
+          },
+        },
+      },
+    });
+  }
+
   async function loadRunsForPeriod() {
     const periodId = periodSelect?.value ? Number(periodSelect.value) : null;
     if (!periodId) {
@@ -366,18 +502,54 @@ document.addEventListener('DOMContentLoaded', () => {
     const data = lastPayload;
     const k = data.kpis || {};
     const c = data.coverage || {};
+    const f = data.financial || {};
+    const riskValue = Number(f.not_found_value || 0);
+    const criticalValue = Number(f.critical_not_found_value || 0);
+    const topServiceValue = Number((data.top_not_found_by_service_value || [])[0]?.not_found_value || 0);
+    const concentration = riskValue > 0 ? ((topServiceValue / riskValue) * 100) : 0;
+    const criticalCount = Number((data.critical_not_found || []).length || 0);
+    const coveragePct = Number(c.scope_assets_pct || 0);
+
     kpisEl.innerHTML = `
-      <div>Total: ${k.total || 0} | Encontrados: ${k.found || 0} (${k.found_pct || 0}%) | No encontrados: ${k.not_found || 0} (${k.not_found_pct || 0}%) | Pendientes: ${k.pending || 0}</div>
-      <div style="margin-top:6px;color:#345266;font-size:13px;">
-        Cobertura sobre base: ${c.scope_assets || 0}/${c.base_total_assets || 0} activos (${c.scope_assets_pct || 0}%) |
-        Valor cubierto: ${new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(Number(c.scope_value || 0))}
-        / ${new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(Number(c.base_total_value || 0))}
-        (${c.scope_value_pct || 0}%)
+      <div class="kpi-grid-exec">
+        <div class="kpi-exec-card">
+          <div class="kpi-exec-label">Riesgo Economico No Encontrado</div>
+          <div class="kpi-exec-value">${fmtCop(riskValue)}</div>
+          <div class="kpi-exec-meta">${Number(f.not_found_value_pct || 0)}% del valor inventario</div>
+        </div>
+        <div class="kpi-exec-card">
+          <div class="kpi-exec-label">Valor Critico en Riesgo</div>
+          <div class="kpi-exec-value">${fmtCop(criticalValue)}</div>
+          <div class="kpi-exec-meta">${criticalCount} activos criticos no encontrados</div>
+        </div>
+        <div class="kpi-exec-card">
+          <div class="kpi-exec-label">Cumplimiento Inventario</div>
+          <div class="kpi-exec-value">${Number(k.found_pct || 0)}%</div>
+          <div class="kpi-exec-meta">${k.found || 0} encontrados de ${k.total || 0}</div>
+        </div>
+        <div class="kpi-exec-card">
+          <div class="kpi-exec-label">Cobertura de Base</div>
+          <div class="kpi-exec-value">${coveragePct}%</div>
+          <div class="kpi-exec-meta">${c.scope_assets || 0}/${c.base_total_assets || 0} activos en alcance</div>
+        </div>
+      </div>
+      <div class="kpi-exec-strip">
+        Concentracion de riesgo en servicio principal: ${concentration.toFixed(1)}% |
+        Pendientes: ${k.pending || 0} |
+        No encontrados: ${k.not_found || 0} (${Number(k.not_found_pct || 0)}%)
       </div>
     `;
+    if (executiveNotesEl) {
+      const insights = (data.insights || []).slice(0, 3);
+      executiveNotesEl.innerHTML = insights.length
+        ? `<b>Mensajes clave:</b> ${insights.map((i) => App.escapeHtml(i)).join(' | ')}`
+        : '';
+    }
     const topService = Number(topServiceEl?.value || 15);
     const topType = Number(topTypeEl?.value || 15);
     const topArea = Number(topAreaEl?.value || 10);
+    serviceRiskValueChart = renderValueImpactChart(serviceRiskValueChart, serviceRiskValueChartEl, data.top_not_found_by_service_value || [], 10);
+    criticalRiskChart = renderCriticalRiskChart(criticalRiskChart, criticalRiskChartEl, data.critical_not_found || [], 10);
     serviceChart = renderBarChart(serviceChart, serviceChartEl, data.by_service || [], 'Servicios', topService);
     typeChart = renderBarChart(typeChart, typeChartEl, data.by_type || [], 'Tipos', topType);
     areaChart = renderBarChart(areaChart, areaChartEl, data.by_area || [], 'Areas', topArea);

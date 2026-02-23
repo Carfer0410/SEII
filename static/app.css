@@ -2271,3 +2271,62 @@ tbody tr:hover {
 .help-modal-card .cron-list li {
   line-height: 1.45;
 }
+
+/* Dashboard ejecutivo */
+.kpi-grid-exec {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.kpi-exec-card {
+  border: 1px solid #d6e4f0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: linear-gradient(150deg, #ffffff 0%, #f6fbff 100%);
+}
+
+.kpi-exec-label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #1f5f8f;
+  font-weight: 800;
+}
+
+.kpi-exec-value {
+  margin-top: 4px;
+  font-size: 20px;
+  color: #103b52;
+  font-weight: 800;
+}
+
+.kpi-exec-meta {
+  margin-top: 3px;
+  font-size: 12px;
+  color: #4f687b;
+  font-weight: 600;
+}
+
+.kpi-exec-strip {
+  margin-top: 10px;
+  border-radius: 10px;
+  border: 1px solid #c7dceb;
+  background: #edf6fc;
+  color: #1b4e6b;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 10px;
+}
+
+@media (max-width: 900px) {
+  .kpi-grid-exec {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .kpi-grid-exec {
+    grid-template-columns: 1fr;
+  }
+}
