@@ -75,10 +75,25 @@ window.App = (() => {
       .replace(/>/g, '&gt;');
   }
 
+  function formatDateTime(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (!raw.includes('T')) return raw;
+    const normalized = raw.endsWith('Z') ? raw.replace('Z', '+00:00') : raw;
+    const dt = new Date(normalized);
+    if (Number.isNaN(dt.getTime())) return raw.replace('T', ' ').slice(0, 16);
+    const yyyy = dt.getFullYear();
+    const mm = String(dt.getMonth() + 1).padStart(2, '0');
+    const dd = String(dt.getDate()).padStart(2, '0');
+    const hh = String(dt.getHours()).padStart(2, '0');
+    const mi = String(dt.getMinutes()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+  }
+
   function renderTable(items) {
     if (!items || !items.length) return '<div>No hay datos.</div>';
     const headers = Object.keys(items[0]);
-    return `<table><thead><tr>${headers.map((h) => `<th>${escapeHtml(formatHeader(h))}</th>`).join('')}</tr></thead><tbody>${items.map((r) => `<tr>${headers.map((h) => `<td>${escapeHtml(r[h])}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    return `<table><thead><tr>${headers.map((h) => `<th>${escapeHtml(formatHeader(h))}</th>`).join('')}</tr></thead><tbody>${items.map((r) => `<tr>${headers.map((h) => `<td>${escapeHtml(formatDateTime(r[h]))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
   }
 
   async function loadServices(selectEl) {
@@ -115,5 +130,5 @@ window.App = (() => {
     }).join('');
   }
 
-  return { get, post, patch, setStatus, escapeHtml, renderTable, loadServices, loadRuns, loadPeriods, formatHeader };
+  return { get, post, patch, setStatus, escapeHtml, formatDateTime, renderTable, loadServices, loadRuns, loadPeriods, formatHeader };
 })();

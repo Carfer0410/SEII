@@ -368,8 +368,9 @@ document.addEventListener('DOMContentLoaded', () => {
       areaChart = renderBarChart(areaChart, areaChartEl, data.by_area || [], 'Areas');
     }
 
-    const generatedAt = data.meta?.generated_at || '';
-    setStatus(dashboardStatus, generatedAt ? `Actualizado: ${generatedAt}` : '');
+    const generatedAt = data.meta?.generated_at_local || data.meta?.generated_at || '';
+    const formattedGeneratedAt = (window.App?.formatDateTime ? window.App.formatDateTime(generatedAt) : generatedAt);
+    setStatus(dashboardStatus, formattedGeneratedAt ? `Actualizado: ${formattedGeneratedAt}` : '');
   }
 
   function renderBarChart(instance, canvasEl, rows, label) {
@@ -409,7 +410,11 @@ document.addEventListener('DOMContentLoaded', () => {
       .map(
         (r) =>
           `<tr>${headers
-            .map((h) => `<td>${escapeHtml(String(r[h] || ''))}</td>`)
+            .map((h) => {
+              const raw = String(r[h] || '');
+              const formatted = (window.App?.formatDateTime ? window.App.formatDateTime(raw) : raw);
+              return `<td>${escapeHtml(formatted)}</td>`;
+            })
             .join('')}</tr>`
       )
       .join('')}</tbody></table>`;
@@ -437,7 +442,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <td>${escapeHtml(String(row.status || ''))}</td>
         <td>${escapeHtml(String(row.reason || ''))}</td>
         <td>${escapeHtml(String(row.requested_by || ''))}</td>
-        <td>${escapeHtml(String(row.requested_at || ''))}</td>
+        <td>${escapeHtml(window.App?.formatDateTime ? window.App.formatDateTime(String(row.requested_at || '')) : String(row.requested_at || ''))}</td>
         <td>${actions}</td>
       </tr>`;
     }).join('')}</tbody></table>`;

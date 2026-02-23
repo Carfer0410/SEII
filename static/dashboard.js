@@ -555,7 +555,8 @@ document.addEventListener('DOMContentLoaded', () => {
     areaChart = renderBarChart(areaChart, areaChartEl, data.by_area || [], 'Areas', topArea);
     statusPieChart = renderStatusPie(statusPieChart, statusPieChartEl, k);
     renderNotFoundSpecific(data);
-    App.setStatus(statusEl, `Actualizado: ${data.meta?.generated_at || ''}`);
+    const generatedAt = data.meta?.generated_at_local || data.meta?.generated_at || '';
+    App.setStatus(statusEl, generatedAt ? `Actualizado: ${App.formatDateTime(generatedAt)}` : '');
   }
 
   refreshBtn?.addEventListener('click', () => loadDashboard().catch((e) => App.setStatus(statusEl, e.message, true)));

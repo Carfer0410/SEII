@@ -74,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <td>${App.escapeHtml(String(r.id || ''))}</td>
           <td class="cell-clip" title="${App.escapeHtml(r.title || '')}">${App.escapeHtml(r.title || '')}</td>
           <td class="cell-clip" title="${App.escapeHtml(r.period_label || '-')}">${App.escapeHtml(r.period_label || '-')}</td>
-          <td>${App.escapeHtml(String(r.generated_at || '').replace('T', ' ').slice(0, 16))}</td>
+          <td>${App.escapeHtml(App.formatDateTime(r.generated_at_local || r.generated_at || ''))}</td>
           <td class="cell-clip" title="${App.escapeHtml(r.file_name || '')}">${App.escapeHtml(r.file_name || '')}</td>
           <td><button type="button" class="mini-btn" data-report-id="${App.escapeHtml(String(r.id || ''))}">Descargar</button></td>
         </tr>
@@ -85,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <td>${App.escapeHtml(String(r.id || ''))}</td>
         <td>${App.escapeHtml(r.report_type === 'a22_pdf' ? 'A22 PDF' : 'A22 Excel')}</td>
         <td class="cell-clip" title="${App.escapeHtml(r.period_label || '-')}">${App.escapeHtml(r.period_label || '-')}</td>
-        <td>${App.escapeHtml(String(r.generated_at || '').replace('T', ' ').slice(0, 16))}</td>
+        <td>${App.escapeHtml(App.formatDateTime(r.generated_at_local || r.generated_at || ''))}</td>
         <td class="cell-clip" title="${App.escapeHtml(r.file_name || '')}">${App.escapeHtml(r.file_name || '')}</td>
         <td><button type="button" class="mini-btn" data-a22-report-id="${App.escapeHtml(String(r.id || ''))}">Descargar</button></td>
       </tr>

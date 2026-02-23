@@ -2282,6 +2282,7 @@ def build_dashboard_payload(service=None, run_id=None, period_id=None):
                 'period': period.to_dict() if period else None,
                 'service_filter': service or '',
                 'generated_at': now_iso(),
+                'generated_at_local': format_dt_local(now_iso()),
             }
         }
         payload['insights'] = build_management_insights(payload)
@@ -2450,6 +2451,7 @@ def build_dashboard_payload(service=None, run_id=None, period_id=None):
             'period': period.to_dict() if period else None,
             'service_filter': service or '',
             'generated_at': now_iso(),
+            'generated_at_local': format_dt_local(now_iso()),
         }
     }
     payload['insights'] = build_management_insights(payload)
@@ -4184,7 +4186,7 @@ def dashboard_report_pdf():
     run_name = (meta.get('run') or {}).get('name') if meta.get('run') else 'Sin jornada'
     period_name = (meta.get('period') or {}).get('name') if meta.get('period') else 'Sin periodo'
     service_filter = meta.get('service_filter') or 'TODOS'
-    generated_at = meta.get('generated_at') or now_iso()
+    generated_at = meta.get('generated_at_local') or format_dt_local(meta.get('generated_at') or now_iso())
 
     story = []
     hero = Table([[
