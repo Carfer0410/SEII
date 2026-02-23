@@ -78,7 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <td>${App.escapeHtml(formatMoney(a.SALDO))}</td>
         <td>${App.escapeHtml(fechaOnly)}</td>
         <td>${App.escapeHtml(row.reason)}</td>
-        <td><button type="button" class="mini-btn disposal-edit-btn" data-manage-disposal-id="${App.escapeHtml(String(row.id || ''))}">Editar baja</button></td>
+        <td><button type="button" class="mini-btn disposal-edit-btn" data-manage-disposal-id="${App.escapeHtml(String(row.id || ''))}">Editar</button></td>
       </tr>`;
     }).join('')}</tbody></table>`;
   }
