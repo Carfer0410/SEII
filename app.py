@@ -384,6 +384,18 @@ class Asset(db.Model):
     costo = db.Column(db.Float)
     saldo = db.Column(db.Float)
     fecha_compra = db.Column(db.String)
+    codigo_inteligente = db.Column(db.String)
+    subtipo_codigo = db.Column(db.String)
+    color = db.Column(db.String)
+    nit_proveedor = db.Column(db.String)
+    desc_proveedor = db.Column(db.String)
+    forma_adquisicion = db.Column(db.String)
+    en_garantia = db.Column(db.String)
+    entidad_garantia = db.Column(db.String)
+    garantia_desde = db.Column(db.String)
+    garantia_hasta = db.Column(db.String)
+    agencia = db.Column(db.String)
+    centro_costo_code = db.Column(db.String)
 
     # campos de inventario
     estado_inventario = db.Column(db.String, default='No verificado')
@@ -416,6 +428,18 @@ class Asset(db.Model):
             'COSTO': self.costo,
             'SALDO': self.saldo,
             'FECHA_COMPRA': self.fecha_compra,
+            'CODIGO_INTELIGENTE': self.codigo_inteligente,
+            'SUBTIPO_CODIGO': self.subtipo_codigo,
+            'COLOR': self.color,
+            'NIT_PROVEEDOR': self.nit_proveedor,
+            'DESCRIPCION_PROVEEDOR': self.desc_proveedor,
+            'FORMA_ADQUISICION': self.forma_adquisicion,
+            'EN_GARANTIA': self.en_garantia,
+            'ENTIDAD_GARANTIA': self.entidad_garantia,
+            'GARANTIA_DESDE': self.garantia_desde,
+            'GARANTIA_HASTA': self.garantia_hasta,
+            'AGENCIA': self.agencia,
+            'CENTRO_COSTO_CODIGO': self.centro_costo_code,
             'estado_inventario': self.estado_inventario,
             'fecha_verificacion': self.fecha_verificacion,
             'usuario_verificador': self.usuario_verificador,
@@ -625,12 +649,14 @@ def ensure_db():
     if has_app_context():
         db.create_all()
         ensure_schema_updates()
+        backfill_asset_life_sheet_fields()
         assign_legacy_period_to_old_runs()
         assign_legacy_period_to_old_disposals()
     else:
         with app.app_context():
             db.create_all()
             ensure_schema_updates()
+            backfill_asset_life_sheet_fields()
             assign_legacy_period_to_old_runs()
             assign_legacy_period_to_old_disposals()
 
@@ -697,6 +723,30 @@ def ensure_schema_updates():
             conn.execute(text('ALTER TABLE asset ADD COLUMN tipo_activo_cache VARCHAR'))
         if 'raw_row_json' not in columns:
             conn.execute(text('ALTER TABLE asset ADD COLUMN raw_row_json TEXT'))
+        if 'codigo_inteligente' not in columns:
+            conn.execute(text('ALTER TABLE asset ADD COLUMN codigo_inteligente VARCHAR'))
+        if 'subtipo_codigo' not in columns:
+            conn.execute(text('ALTER TABLE asset ADD COLUMN subtipo_codigo VARCHAR'))
+        if 'color' not in columns:
+            conn.execute(text('ALTER TABLE asset ADD COLUMN color VARCHAR'))
+        if 'nit_proveedor' not in columns:
+            conn.execute(text('ALTER TABLE asset ADD COLUMN nit_proveedor VARCHAR'))
+        if 'desc_proveedor' not in columns:
+            conn.execute(text('ALTER TABLE asset ADD COLUMN desc_proveedor VARCHAR'))
+        if 'forma_adquisicion' not in columns:
+            conn.execute(text('ALTER TABLE asset ADD COLUMN forma_adquisicion VARCHAR'))
+        if 'en_garantia' not in columns:
+            conn.execute(text('ALTER TABLE asset ADD COLUMN en_garantia VARCHAR'))
+        if 'entidad_garantia' not in columns:
+            conn.execute(text('ALTER TABLE asset ADD COLUMN entidad_garantia VARCHAR'))
+        if 'garantia_desde' not in columns:
+            conn.execute(text('ALTER TABLE asset ADD COLUMN garantia_desde VARCHAR'))
+        if 'garantia_hasta' not in columns:
+            conn.execute(text('ALTER TABLE asset ADD COLUMN garantia_hasta VARCHAR'))
+        if 'agencia' not in columns:
+            conn.execute(text('ALTER TABLE asset ADD COLUMN agencia VARCHAR'))
+        if 'centro_costo_code' not in columns:
+            conn.execute(text('ALTER TABLE asset ADD COLUMN centro_costo_code VARCHAR'))
 
         run_columns = {row[1] for row in conn.execute(text('PRAGMA table_info(inventory_run)')).fetchall()}
         if 'period_id' not in run_columns:
@@ -745,8 +795,74 @@ def assign_legacy_period_to_old_disposals():
     db.session.commit()
 
 
+def backfill_asset_life_sheet_fields():
+    if str(get_system_meta('life_sheet_backfill_v1', '0')).strip() == '1':
+        return
+    rows = Asset.query.all()
+    changed = 0
+    for asset in rows:
+        payload = asset_raw_payload(asset)
+
+        def set_if_empty(attr_name, candidate):
+            nonlocal changed
+            current = getattr(asset, attr_name, None)
+            if str(current or '').strip():
+                return
+            val = str(candidate or '').strip()
+            if not val:
+                return
+            setattr(asset, attr_name, val)
+            changed += 1
+
+        set_if_empty('codigo_inteligente', _pick_first_value(payload, [
+            'CODINTELIGENTE', 'CODIGO_INTELIGENTE', 'COD_INTELIGENTE', 'CODIGO INTELIGENTE',
+        ]))
+        set_if_empty('subtipo_codigo', _pick_first_value(payload, [
+            'SUBTIPO', 'SUBTIPO_ACTIVO', 'COD_SUBTIPO', 'COD_SUBTIPO_ACTIVO',
+        ]))
+        set_if_empty('color', _pick_first_value(payload, ['COLOR', 'COLORES']))
+        set_if_empty('nit_proveedor', _pick_first_value(payload, ['NIT_PROVEEDOR', 'NIT PROVEEDOR', 'NIT']))
+        set_if_empty('desc_proveedor', _pick_first_value(payload, ['PROVEEDOR', 'DESCRIPCION_PROVEEDOR', 'DESCRIPCION DEL PROVEEDOR']))
+        set_if_empty('forma_adquisicion', _pick_first_value(payload, ['FORMA_ADQUISICION', 'FORMA DE ADQUISICION', 'ADQUISICION']))
+        set_if_empty('en_garantia', _pick_first_value(payload, ['EN_GARANTIA', 'GARANTIA']))
+        set_if_empty('entidad_garantia', _pick_first_value(payload, ['ENTIDAD', 'ENTIDAD_GARANTIA']))
+        set_if_empty('garantia_desde', _pick_first_value(payload, ['GARANTIA_DESDE', 'DESDE']))
+        set_if_empty('garantia_hasta', _pick_first_value(payload, ['GARANTIA_HASTA', 'HASTA']))
+        set_if_empty('agencia', _pick_first_value(payload, ['AGENCIA']))
+        set_if_empty('centro_costo_code', _pick_first_value(payload, ['C_CCOS', 'CENTRO_COSTO', 'COD_CENTRO_COSTO']))
+
+    set_system_meta('life_sheet_backfill_v1', '1')
+    db.session.commit()
+
+
 def normalize_columns(cols):
-    return {c.strip().upper(): c for c in cols}
+    out = {}
+    for c in cols:
+        raw = str(c or '').strip()
+        if not raw:
+            continue
+        out[raw.upper()] = c
+        out[normalize_lookup_key(raw)] = c
+    return out
+
+
+def normalize_lookup_key(value):
+    txt = str(value or '').strip().upper()
+    if not txt:
+        return ''
+    txt = unicodedata.normalize('NFD', txt)
+    txt = ''.join(ch for ch in txt if unicodedata.category(ch) != 'Mn')
+    normalized = []
+    last_underscore = False
+    for ch in txt:
+        if ch.isalnum():
+            normalized.append(ch)
+            last_underscore = False
+        else:
+            if not last_underscore:
+                normalized.append('_')
+                last_underscore = True
+    return ''.join(normalized).strip('_')
 
 
 def is_excluded_service_name(value):
@@ -829,14 +945,22 @@ def apply_run_scope_filter(query, run):
 
 def get_cell(row, cols_map, key):
     """Retorna el valor de la columna mapeada o None si no existe."""
-    if key in cols_map:
-        try:
-            v = row[cols_map[key]]
-            if pd.isna(v):
+    candidates = [
+        str(key or '').strip(),
+        str(key or '').strip().upper(),
+        normalize_lookup_key(key),
+    ]
+    for cand in candidates:
+        if not cand:
+            continue
+        if cand in cols_map:
+            try:
+                v = row[cols_map[cand]]
+                if pd.isna(v):
+                    return None
+                return v
+            except Exception:
                 return None
-            return v
-        except Exception:
-            return None
     return None
 
 
@@ -1037,6 +1161,42 @@ def import_file():
             'costo': try_float(get_cell(row, cols, 'COSTO')),
             'saldo': try_float(get_cell(row, cols, 'SALDO')),
             'fecha_compra': get_cell(row, cols, 'FECHA_COMPRA'),
+            'codigo_inteligente': get_cell_first(row, cols, [
+                'CODINTELIGENTE', 'CODIGO_INTELIGENTE', 'COD_INTELIGENTE', 'CODIGO INTELIGENTE',
+            ]),
+            'subtipo_codigo': get_cell_first(row, cols, [
+                'SUBTIPO', 'SUBTIPO_ACTIVO', 'COD_SUBTIPO', 'COD_SUBTIPO_ACTIVO',
+            ]),
+            'color': get_cell_first(row, cols, [
+                'COLOR', 'COLORES',
+            ]),
+            'nit_proveedor': get_cell_first(row, cols, [
+                'NIT_PROVEEDOR', 'NIT PROVEEDOR', 'NIT',
+            ]),
+            'desc_proveedor': get_cell_first(row, cols, [
+                'DESCRIPCION_PROVEEDOR', 'DESCRIPCION DEL PROVEEDOR', 'PROVEEDOR',
+            ]),
+            'forma_adquisicion': get_cell_first(row, cols, [
+                'FORMA_ADQUISICION', 'FORMA DE ADQUISICION', 'ADQUISICION',
+            ]),
+            'en_garantia': get_cell_first(row, cols, [
+                'EN_GARANTIA', 'GARANTIA',
+            ]),
+            'entidad_garantia': get_cell_first(row, cols, [
+                'ENTIDAD', 'ENTIDAD_GARANTIA',
+            ]),
+            'garantia_desde': get_cell_first(row, cols, [
+                'GARANTIA_DESDE', 'DESDE',
+            ]),
+            'garantia_hasta': get_cell_first(row, cols, [
+                'GARANTIA_HASTA', 'HASTA',
+            ]),
+            'agencia': get_cell_first(row, cols, [
+                'AGENCIA',
+            ]),
+            'centro_costo_code': get_cell_first(row, cols, [
+                'C_CCOS', 'COD_CENTRO_COSTO', 'CENTRO_COSTO',
+            ]),
             'raw_row_json': json.dumps(raw_payload, ensure_ascii=False, default=str),
         }
 
@@ -1236,6 +1396,38 @@ def get_asset_by_code(code):
             if scan_code_equals(payload.get(key), scan_code):
                 return row, key
     return None, None
+
+
+def get_asset_by_c_act_strict(code):
+    if code is None:
+        return None
+    raw_code = str(code or '').strip()
+    scan_code = normalize_scan_code(raw_code)
+    if not scan_code:
+        return None
+
+    # Intento directo (tal cual y normalizado)
+    for candidate in [raw_code, scan_code]:
+        if not candidate:
+            continue
+        asset = Asset.query.filter_by(c_act=candidate).first()
+        if asset:
+            return asset
+
+    # Intento robusto para codigos numericos: 7015, 7015.0, 07015, etc.
+    if scan_code.isdigit():
+        int_code = str(int(scan_code))
+        candidates = Asset.query.filter(
+            (Asset.c_act == int_code) |
+            (Asset.c_act == f'{int_code}.0') |
+            (Asset.c_act == f'{int_code}.00') |
+            (Asset.c_act.like(f'{int_code}.%')) |
+            (Asset.c_act.like(f'0%{int_code}'))
+        ).limit(300).all()
+        for row in candidates:
+            if scan_code_equals(row.c_act, scan_code):
+                return row
+    return None
 
 
 def get_or_create_default_period():
@@ -5518,12 +5710,27 @@ def asset_raw_payload(asset):
         'COSTO': to_number(asset.costo),
         'SALDO': to_number(asset.saldo),
         'FECHA_COMPRA': asset.fecha_compra or '',
+        'CODIGO_INTELIGENTE': asset.codigo_inteligente or '',
+        'SUBTIPO_CODIGO': asset.subtipo_codigo or '',
+        'COLOR': asset.color or '',
+        'NIT_PROVEEDOR': asset.nit_proveedor or '',
+        'DESCRIPCION_PROVEEDOR': asset.desc_proveedor or '',
+        'FORMA_ADQUISICION': asset.forma_adquisicion or '',
+        'EN_GARANTIA': asset.en_garantia or '',
+        'ENTIDAD_GARANTIA': asset.entidad_garantia or '',
+        'GARANTIA_DESDE': asset.garantia_desde or '',
+        'GARANTIA_HASTA': asset.garantia_hasta or '',
+        'AGENCIA': asset.agencia or '',
+        'CENTRO_COSTO_CODIGO': asset.centro_costo_code or '',
     }
 
 
 def _pick_first_value(payload, keys):
+    normalized_payload = {normalize_lookup_key(k): v for k, v in payload.items()}
     for key in keys:
         val = payload.get(key)
+        if val is None:
+            val = normalized_payload.get(normalize_lookup_key(key))
         if val is None:
             continue
         txt = str(val).strip()
@@ -5546,26 +5753,26 @@ def build_asset_life_sheet_payload(asset, matched_by='C_ACT'):
 
     data = {
         'codigo': asset.c_act or '',
-        'codigo_inteligente': codigo_inteligente,
+        'codigo_inteligente': codigo_inteligente or (asset.codigo_inteligente or ''),
         'descripcion_activo': asset.nom or '',
         'familia_codigo': asset.c_fam or '',
         'familia_nombre': asset.nom_fam or '',
         'tipo_codigo': asset.c_tiac or '',
         'tipo_nombre': asset.desc_tiac or '',
-        'subtipo_codigo': subtipo_codigo,
+        'subtipo_codigo': subtipo_codigo or (asset.subtipo_codigo or ''),
         'subtipo_nombre': subtipo_nombre,
-        'marca': asset.nom_marca or '',
+        'marca': asset.nom_marca or _pick_first_value(payload, ['MARCA']),
         'modelo': asset.modelo or '',
         'serial_referencia': asset.serie or asset.ref or '',
-        'color': _pick_first_value(payload, ['COLOR', 'COLORES']),
-        'nit_proveedor': _pick_first_value(payload, ['NIT_PROVEEDOR', 'NIT PROVEEDOR', 'NIT']),
-        'proveedor': _pick_first_value(payload, ['PROVEEDOR', 'DESCRIPCION_PROVEEDOR', 'DESCRIPCION DEL PROVEEDOR']),
+        'color': _pick_first_value(payload, ['COLOR', 'COLORES']) or (asset.color or ''),
+        'nit_proveedor': _pick_first_value(payload, ['NIT_PROVEEDOR', 'NIT PROVEEDOR', 'NIT']) or (asset.nit_proveedor or ''),
+        'proveedor': _pick_first_value(payload, ['PROVEEDOR', 'DESCRIPCION_PROVEEDOR', 'DESCRIPCION DEL PROVEEDOR']) or (asset.desc_proveedor or ''),
         'fecha_incorporacion': date_only(asset.fecha_compra),
-        'forma_adquisicion': _pick_first_value(payload, ['FORMA_ADQUISICION', 'FORMA DE ADQUISICION', 'ADQUISICION']),
-        'en_garantia': _pick_first_value(payload, ['EN_GARANTIA', 'GARANTIA']) or 'No',
-        'entidad': _pick_first_value(payload, ['ENTIDAD']),
-        'garantia_desde': _pick_first_value(payload, ['GARANTIA_DESDE', 'DESDE']),
-        'garantia_hasta': _pick_first_value(payload, ['GARANTIA_HASTA', 'HASTA']),
+        'forma_adquisicion': _pick_first_value(payload, ['FORMA_ADQUISICION', 'FORMA DE ADQUISICION', 'ADQUISICION']) or (asset.forma_adquisicion or ''),
+        'en_garantia': _pick_first_value(payload, ['EN_GARANTIA', 'GARANTIA']) or (asset.en_garantia or 'No'),
+        'entidad': _pick_first_value(payload, ['ENTIDAD', 'ENTIDAD_GARANTIA']) or (asset.entidad_garantia or ''),
+        'garantia_desde': _pick_first_value(payload, ['GARANTIA_DESDE', 'DESDE']) or (asset.garantia_desde or ''),
+        'garantia_hasta': _pick_first_value(payload, ['GARANTIA_HASTA', 'HASTA']) or (asset.garantia_hasta or ''),
         'estado': asset.est or '',
         'condicion': _pick_first_value(payload, ['CONDICION']) or (asset.estado_inventario or ''),
         'metodo_deprec': asset.deprecia or '',
@@ -5574,9 +5781,9 @@ def build_asset_life_sheet_payload(asset, matched_by='C_ACT'):
         'total_activo': round(to_number(asset.costo), 2),
         'responsable': asset.nom_resp or '',
         'ubicacion': asset.des_ubi or '',
-        'centro_costo': _pick_first_value(payload, ['C_CCOS', 'CENTRO_COSTO', 'COD_CENTRO_COSTO']),
+        'centro_costo': _pick_first_value(payload, ['C_CCOS', 'CENTRO_COSTO', 'COD_CENTRO_COSTO']) or (asset.centro_costo_code or ''),
         'servicio': asset.nom_ccos or '',
-        'agencia': _pick_first_value(payload, ['AGENCIA']),
+        'agencia': _pick_first_value(payload, ['AGENCIA']) or (asset.agencia or ''),
         'area': classify_area(asset.nom_ccos),
         'observaciones': asset.observacion_inventario or _pick_first_value(payload, ['OBSERVACIONES', 'OBSERVACION']) or '',
         'matched_by': matched_by or 'C_ACT',
@@ -5591,7 +5798,11 @@ def asset_life_sheet():
     code = (request.args.get('code') or '').strip()
     if not code:
         return jsonify({'error': 'Debes indicar el codigo del activo'}), 400
-    asset, matched_by = get_asset_by_code(code)
+    allow_barcode = parse_bool(request.args.get('allow_barcode'), False)
+    asset = get_asset_by_c_act_strict(code)
+    matched_by = 'C_ACT'
+    if (not asset) and allow_barcode:
+        asset, matched_by = get_asset_by_code(code)
     if not asset:
         return jsonify({'error': 'Activo no encontrado'}), 404
     return jsonify({'item': build_asset_life_sheet_payload(asset, matched_by)})
@@ -5603,7 +5814,11 @@ def asset_life_sheet_pdf():
     code = (request.args.get('code') or '').strip()
     if not code:
         return jsonify({'error': 'Debes indicar el codigo del activo'}), 400
-    asset, matched_by = get_asset_by_code(code)
+    allow_barcode = parse_bool(request.args.get('allow_barcode'), False)
+    asset = get_asset_by_c_act_strict(code)
+    matched_by = 'C_ACT'
+    if (not asset) and allow_barcode:
+        asset, matched_by = get_asset_by_code(code)
     if not asset:
         return jsonify({'error': 'Activo no encontrado'}), 404
 

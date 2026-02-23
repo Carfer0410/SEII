@@ -11,6 +11,15 @@ document.addEventListener('DOMContentLoaded', () => {
     return String(codeInput?.value || '').trim();
   }
 
+  function looksLikeBarcode(code) {
+    const txt = String(code || '').trim();
+    if (!txt) return false;
+    const compact = txt.replace(/\s+/g, '');
+    if (compact.length >= 7) return true;
+    if (/[^0-9]/.test(compact)) return true;
+    return false;
+  }
+
   function row(label, value) {
     return `
       <div class="life-cell life-label">${App.escapeHtml(label)}</div>
@@ -79,7 +88,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     try {
-      const data = await App.get(`/asset_life_sheet?code=${encodeURIComponent(code)}`);
+      const allowBarcode = looksLikeBarcode(code) ? '1' : '0';
+      const data = await App.get(`/asset_life_sheet?code=${encodeURIComponent(code)}&allow_barcode=${allowBarcode}`);
       renderPreview(data.item || {});
       currentCode = code;
       if (pdfBtn) pdfBtn.disabled = false;
@@ -105,7 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
       App.setStatus(statusEl, 'Primero consulta un activo para generar el PDF.', true);
       return;
     }
-    window.location = `/asset_life_sheet/pdf?code=${encodeURIComponent(code)}`;
+    const allowBarcode = looksLikeBarcode(code) ? '1' : '0';
+    window.location = `/asset_life_sheet/pdf?code=${encodeURIComponent(code)}&allow_barcode=${allowBarcode}`;
   });
 });
-
