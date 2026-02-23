@@ -1045,10 +1045,46 @@ def import_file():
             refresh_asset_type_cache(asset)
             db.session.add(asset)
             imported += 1
+    # Persist metadata so UI can show the currently imported base at all times.
+    set_system_meta('last_import_file_name', str(f.filename or '').strip())
+    set_system_meta('last_import_at', now_iso())
+    set_system_meta('last_import_imported', str(imported))
+    set_system_meta('last_import_updated', str(updated))
+
     db.session.commit()
     bump_assets_revision()
     invalidate_accounting_report_cache()
     return jsonify({'imported': imported, 'updated': updated})
+
+
+@app.route('/import/status')
+def import_status():
+    ensure_db()
+
+    file_name = (get_system_meta('last_import_file_name', '') or '').strip()
+    imported_at = (get_system_meta('last_import_at', '') or '').strip()
+    imported_raw = get_system_meta('last_import_imported', '0')
+    updated_raw = get_system_meta('last_import_updated', '0')
+    try:
+        imported = int(str(imported_raw).strip())
+    except Exception:
+        imported = 0
+    try:
+        updated = int(str(updated_raw).strip())
+    except Exception:
+        updated = 0
+
+    has_assets = db.session.query(Asset.id).first() is not None
+    has_import = bool(file_name or imported_at or has_assets)
+
+    return jsonify({
+        'has_import': has_import,
+        'file_name': file_name,
+        'imported_at': imported_at,
+        'imported_at_local': format_dt_local(imported_at) if imported_at else '',
+        'imported': imported,
+        'updated': updated,
+    })
 
 
 @app.route('/export_pdf')

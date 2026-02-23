@@ -526,6 +526,63 @@ th { background: #f3f9fd; text-align: left; }
   color: #5d7488;
   font-size: 12px;
 }
+.app-success-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  background: rgba(9, 30, 44, 0.52);
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+.app-success-overlay[hidden] {
+  display: none !important;
+}
+.app-success-card {
+  width: min(520px, 100%);
+  background:
+    radial-gradient(circle at 92% 10%, rgba(36, 169, 222, 0.14), transparent 34%),
+    radial-gradient(circle at 10% 90%, rgba(72, 191, 83, 0.14), transparent 36%),
+    #ffffff;
+  border: 1px solid #c9dfec;
+  border-radius: 18px;
+  box-shadow: 0 20px 44px rgba(10, 34, 54, 0.3);
+  padding: 16px;
+}
+.app-success-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f7a50;
+  background: #eaf9ef;
+  border: 1px solid #bde5cc;
+}
+.app-success-head h4 {
+  margin: 10px 0 0;
+  color: #1f5f8f;
+  font-size: 20px;
+}
+.app-success-body {
+  margin-top: 10px;
+  color: #335669;
+  line-height: 1.45;
+  font-size: 14px;
+}
+.app-success-actions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+}
+.app-success-ok {
+  background: linear-gradient(120deg, #1689c2, #1f9b4a);
+  color: #fff;
+  border: none;
+}
 .app-loading-overlay {
   position: fixed;
   inset: 0;
@@ -1238,6 +1295,39 @@ th { background: #f3f9fd; text-align: left; }
 }
 .import-summary {
   margin-top: 10px;
+}
+.import-current-base {
+  margin-top: 10px;
+}
+.import-current-base-card {
+  border: 1px solid #c9dfec;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background:
+    radial-gradient(circle at 92% 12%, rgba(36, 169, 222, 0.12), transparent 36%),
+    radial-gradient(circle at 10% 88%, rgba(72, 191, 83, 0.12), transparent 36%),
+    #f7fcff;
+}
+.import-current-base-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #1f5f8f;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.import-current-base-meta {
+  font-size: 13px;
+  color: #355b70;
+  line-height: 1.45;
+}
+.import-current-base-empty {
+  border: 1px dashed #c8dce9;
+  border-radius: 12px;
+  padding: 9px 11px;
+  background: #fbfdff;
+  color: #5a7386;
+  font-size: 12px;
 }
 .import-summary-card {
   border: 1px solid #cfe3da;
@@ -2116,4 +2206,68 @@ tbody tr:hover {
   .card {
     padding: 13px;
   }
+}
+
+/* ------------------------------------ */
+/* Modal system unification (v5)        */
+/* ------------------------------------ */
+.app-confirm-overlay,
+.help-modal,
+.app-success-overlay {
+  background: rgba(9, 30, 44, 0.54);
+  backdrop-filter: blur(2px);
+}
+
+.app-confirm-card,
+.app-reason-card,
+.help-modal-card,
+.app-success-card {
+  border-radius: 18px;
+  border: 1px solid #c9dfec;
+  background:
+    radial-gradient(circle at 90% 10%, rgba(36, 169, 222, 0.12), transparent 34%),
+    radial-gradient(circle at 8% 92%, rgba(72, 191, 83, 0.12), transparent 32%),
+    #ffffff;
+  box-shadow: 0 20px 44px rgba(10, 34, 54, 0.28);
+}
+
+.app-confirm-head h4,
+.help-modal-head h3,
+.app-success-head h4 {
+  color: #1f5f8f;
+  font-size: 20px;
+}
+
+.app-confirm-body,
+.help-modal-card,
+.app-success-body {
+  color: #335669;
+}
+
+.app-confirm-cancel,
+.help-modal-head .mini-btn {
+  background: #eaf4fb;
+  color: #1f5c82;
+  border: 1px solid #c0d9ea;
+}
+
+.app-confirm-ok,
+.app-success-ok {
+  background: linear-gradient(120deg, #1689c2, #1f9b4a);
+  color: #fff;
+  border: none;
+}
+
+.app-reason-input {
+  border-color: #c7dce9;
+  background: #fcfeff;
+}
+
+.app-reason-input:focus {
+  border-color: #63bce2;
+  box-shadow: 0 0 0 3px rgba(36, 169, 222, 0.18);
+}
+
+.help-modal-card .cron-list li {
+  line-height: 1.45;
 }

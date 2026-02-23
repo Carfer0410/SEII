@@ -3,6 +3,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const fileInput = document.getElementById("fileInput");
   const importResult = document.getElementById("importResult");
   const importStatus = document.getElementById("importStatus");
+  const importCurrentBase = document.getElementById("importCurrentBase");
   const runName = document.getElementById("runName");
   const periodSelect = document.getElementById("periodSelect");
   const periodName = document.getElementById("periodName");
@@ -37,6 +38,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let allServices = [];
   let selectedServiceSet = new Set();
   let reasonOverlay = null;
+  let successOverlay = null;
 
   function ensureConfirmModal() {
     let overlay = document.getElementById("appConfirmOverlay");
@@ -183,8 +185,103 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  function ensureSuccessModal() {
+    if (successOverlay) return successOverlay;
+    successOverlay = document.getElementById("appSuccessOverlay");
+    if (successOverlay) return successOverlay;
+    successOverlay = document.createElement("div");
+    successOverlay.id = "appSuccessOverlay";
+    successOverlay.className = "app-success-overlay";
+    successOverlay.hidden = true;
+    successOverlay.innerHTML = `
+      <div class="app-success-card" role="dialog" aria-modal="true" aria-labelledby="appSuccessTitle">
+        <div class="app-success-icon" aria-hidden="true">✓</div>
+        <div class="app-success-head">
+          <h4 id="appSuccessTitle">Base de datos importada correctamente</h4>
+        </div>
+        <div id="appSuccessBody" class="app-success-body"></div>
+        <div class="app-success-actions">
+          <button id="appSuccessOk" type="button" class="mini-btn app-success-ok">Aceptar</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(successOverlay);
+    return successOverlay;
+  }
+
+  function showSuccessModal({
+    title = "Base de datos importada correctamente",
+    message = "",
+  } = {}) {
+    return new Promise((resolve) => {
+      const overlay = ensureSuccessModal();
+      const titleEl = overlay.querySelector("#appSuccessTitle");
+      const bodyEl = overlay.querySelector("#appSuccessBody");
+      const okBtn = overlay.querySelector("#appSuccessOk");
+
+      const close = () => {
+        overlay.hidden = true;
+        document.removeEventListener("keydown", onKeydown);
+        overlay.removeEventListener("click", onOverlayClick);
+        okBtn?.removeEventListener("click", onOk);
+        resolve(true);
+      };
+
+      const onOk = () => close();
+      const onOverlayClick = (e) => {
+        if (e.target === overlay) close();
+      };
+      const onKeydown = (e) => {
+        if (e.key === "Escape" || e.key === "Enter") close();
+      };
+
+      if (titleEl) titleEl.textContent = title;
+      if (bodyEl) bodyEl.innerHTML = String(message || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\n/g, "<br>");
+
+      overlay.hidden = false;
+      okBtn?.addEventListener("click", onOk);
+      overlay.addEventListener("click", onOverlayClick);
+      document.addEventListener("keydown", onKeydown);
+      setTimeout(() => okBtn?.focus({ preventScroll: true }), 0);
+    });
+  }
+
   function selectedServices() {
     return allServices.filter((svc) => selectedServiceSet.has(svc));
+  }
+
+  async function loadImportStatus() {
+    if (!importCurrentBase) return;
+    try {
+      const data = await App.get("/import/status");
+      if (!data.has_import) {
+        importCurrentBase.innerHTML =
+          '<div class="import-current-base-empty">No hay una base general importada actualmente.</div>';
+        return;
+      }
+      const fileName = String(data.file_name || "").trim() || "Base previamente cargada";
+      const importedAt = String(data.imported_at_local || "").trim() || "Sin fecha registrada";
+      const imported = Number(data.imported || 0);
+      const updated = Number(data.updated || 0);
+      const total = imported + updated;
+      importCurrentBase.innerHTML = `
+        <div class="import-current-base-card">
+          <div class="import-current-base-title">Base actual importada</div>
+          <div class="import-current-base-meta">
+            Archivo: <strong>${App.escapeHtml(fileName)}</strong><br/>
+            Fecha de importacion: <strong>${App.escapeHtml(importedAt)}</strong><br/>
+            Ultimo procesamiento: <strong>${App.escapeHtml(String(total))}</strong> registros
+          </div>
+        </div>
+      `;
+    } catch (_) {
+      importCurrentBase.innerHTML =
+        '<div class="import-current-base-empty">No se pudo consultar el estado actual de la base.</div>';
+    }
   }
 
   function updateSelectedServicesUi() {
@@ -400,10 +497,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await fetch("/import", { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error importando base");
+      const imported = Number(data.imported || 0);
+      const updated = Number(data.updated || 0);
+      const total = imported + updated;
       if (importResult) {
-        const imported = Number(data.imported || 0);
-        const updated = Number(data.updated || 0);
-        const total = imported + updated;
         importResult.innerHTML = `
           <div class="import-summary-card">
             <div class="import-summary-title">Base general importada exitosamente</div>
@@ -419,11 +516,16 @@ document.addEventListener("DOMContentLoaded", () => {
       await loadPeriodsView();
       await loadRunsView(selectedRunId());
       await refreshSummary();
+      await loadImportStatus();
       App.setStatus(importStatus, "Base importada correctamente");
       App.setStatus(
         statusEl,
         "Base actualizada. Puedes crear/continuar jornadas.",
       );
+      await showSuccessModal({
+        title: "Base de datos importada correctamente",
+        message: `La base general fue importada con exito.\nRegistros procesados: ${total}\nActivos nuevos: ${imported}\nActivos actualizados: ${updated}`,
+      });
     } catch (err) {
       App.setStatus(importStatus, err.message, true);
     }
@@ -693,5 +795,6 @@ document.addEventListener("DOMContentLoaded", () => {
   Promise.all([loadServicePicker(), loadPeriodsView()])
     .then(() => loadRunsView(null))
     .then(refreshSummary)
+    .then(loadImportStatus)
     .catch((err) => App.setStatus(statusEl, err.message, true));
 });
