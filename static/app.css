@@ -3052,3 +3052,23 @@ video {
   }
 }
 
+/* Desktop: mantener menu fijo durante todo el scroll */
+:root {
+  --desktop-nav-offset: 0px;
+}
+
+@media (min-width: 981px) {
+  .nav-top {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    z-index: 1000;
+  }
+
+  body.has-fixed-nav .app-shell {
+    padding-top: calc(var(--desktop-nav-offset) + var(--space-5));
+  }
+}
+

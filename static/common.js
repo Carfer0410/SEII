@@ -132,3 +132,27 @@ window.App = (() => {
 
   return { get, post, patch, setStatus, escapeHtml, formatDateTime, renderTable, loadServices, loadRuns, loadPeriods, formatHeader };
 })();
+
+(() => {
+  const nav = document.querySelector('.nav-top');
+  if (!nav) return;
+
+  const desktopMedia = window.matchMedia('(min-width: 981px)');
+
+  function syncFixedNavOffset() {
+    const isDesktop = desktopMedia.matches;
+    document.body.classList.toggle('has-fixed-nav', isDesktop);
+    if (!isDesktop) {
+      document.documentElement.style.setProperty('--desktop-nav-offset', '0px');
+      return;
+    }
+    const navHeight = Math.ceil(nav.getBoundingClientRect().height);
+    document.documentElement.style.setProperty('--desktop-nav-offset', `${navHeight}px`);
+  }
+
+  window.addEventListener('resize', syncFixedNavOffset, { passive: true });
+  window.addEventListener('orientationchange', syncFixedNavOffset);
+  window.addEventListener('load', syncFixedNavOffset);
+  if (desktopMedia.addEventListener) desktopMedia.addEventListener('change', syncFixedNavOffset);
+  syncFixedNavOffset();
+})();
