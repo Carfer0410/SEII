@@ -23,6 +23,17 @@
         <button id="lifeSearchBtn" type="button">Buscar activo</button>
         <button id="lifePdfBtn" type="button" class="mini-btn" disabled>Descargar PDF</button>
       </div>
+      <div class="life-camera-box">
+        <label>Camara (alternativa de escaneo)</label>
+        <div id="lifeReader"></div>
+        <div class="row life-camera-actions">
+          <button id="lifeStartCameraBtn" type="button">Iniciar camara</button>
+          <button id="lifeStopCameraBtn" type="button" class="mini-btn" disabled>Detener camara</button>
+        </div>
+        <div class="field-help">
+          Al detectar un codigo, se consulta automaticamente la hoja de vida para habilitar la descarga PDF.
+        </div>
+      </div>
       <div id="lifeStatus" class="status"></div>
     </div>
 
@@ -36,6 +47,6 @@
 {% endblock %}
 
 {% block scripts %}
+  <script src="https://unpkg.com/html5-qrcode"></script>
   <script src="{{ url_for('static', filename='hoja_vida.js') }}"></script>
 {% endblock %}
-

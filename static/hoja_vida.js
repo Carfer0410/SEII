@@ -4,8 +4,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const pdfBtn = document.getElementById('lifePdfBtn');
   const statusEl = document.getElementById('lifeStatus');
   const previewEl = document.getElementById('lifeSheetPreview');
+  const startCameraBtn = document.getElementById('lifeStartCameraBtn');
+  const stopCameraBtn = document.getElementById('lifeStopCameraBtn');
 
   let currentCode = '';
+  let scanner = null;
+  let scanBusy = false;
+  let lastDecoded = '';
+  let lastDecodedAt = 0;
 
   function readCode() {
     return String(codeInput?.value || '').trim();
@@ -78,8 +84,8 @@ document.addEventListener('DOMContentLoaded', () => {
     previewEl.textContent = 'Ingresa un codigo para consultar la hoja de vida del activo.';
   }
 
-  async function searchAsset() {
-    const code = readCode();
+  async function searchAsset(codeOverride = '') {
+    const code = String(codeOverride || readCode()).trim();
     if (!code) {
       App.setStatus(statusEl, 'Escribe o escanea un codigo de activo.', true);
       clearPreview();
@@ -102,6 +108,93 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function canUseCamera() {
+    if (typeof window.Html5Qrcode === 'undefined') {
+      App.setStatus(statusEl, 'No se pudo cargar el lector de camara. Recarga la pagina (Ctrl+F5).', true);
+      return false;
+    }
+    const host = window.location.hostname;
+    const secureAllowed = window.isSecureContext || host === 'localhost' || host === '127.0.0.1';
+    if (!secureAllowed) {
+      App.setStatus(statusEl, 'La camara requiere HTTPS (o localhost). Abre la app con URL segura.', true);
+      return false;
+    }
+    return true;
+  }
+
+  async function stopCamera() {
+    if (!scanner) return;
+    try {
+      await scanner.stop();
+    } catch (_) {
+      // Ignorar si ya estaba detenida.
+    }
+    try {
+      await scanner.clear();
+    } catch (_) {
+      // Ignorar limpieza fallida del componente.
+    }
+    scanner = null;
+    if (startCameraBtn) startCameraBtn.disabled = false;
+    if (stopCameraBtn) stopCameraBtn.disabled = true;
+  }
+
+  async function startCamera() {
+    if (!canUseCamera() || scanner) return;
+    scanner = new Html5Qrcode('lifeReader');
+    if (startCameraBtn) startCameraBtn.disabled = true;
+    if (stopCameraBtn) stopCameraBtn.disabled = false;
+
+    const hasFormatsApi = typeof window.Html5QrcodeSupportedFormats !== 'undefined';
+    const formatsToSupport = hasFormatsApi ? [
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.CODE_93,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.ITF,
+      Html5QrcodeSupportedFormats.CODABAR,
+      Html5QrcodeSupportedFormats.QR_CODE,
+    ] : undefined;
+
+    const scanConfig = {
+      fps: 12,
+      qrbox: { width: 320, height: 140 },
+      ...(formatsToSupport ? { formatsToSupport } : {}),
+    };
+
+    try {
+      await scanner.start(
+        { facingMode: 'environment' },
+        scanConfig,
+        async (decoded) => {
+          const code = String(decoded || '').trim();
+          if (!code) return;
+          const now = Date.now();
+          if (scanBusy) return;
+          if (code === lastDecoded && now - lastDecodedAt < 1500) return;
+          scanBusy = true;
+          lastDecoded = code;
+          lastDecodedAt = now;
+          if (codeInput) codeInput.value = code;
+          App.setStatus(statusEl, `Codigo escaneado: ${code}. Consultando activo...`);
+          try {
+            await searchAsset(code);
+          } finally {
+            setTimeout(() => { scanBusy = false; }, 350);
+          }
+        },
+        () => {}
+      );
+      App.setStatus(statusEl, 'Camara activa. Apunta al codigo para consultar la hoja de vida.');
+    } catch (err) {
+      App.setStatus(statusEl, `Error camara: ${err}`, true);
+      await stopCamera();
+    }
+  }
+
   searchBtn?.addEventListener('click', () => searchAsset());
   codeInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === 'NumpadEnter') {
@@ -118,4 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const allowBarcode = looksLikeBarcode(code) ? '1' : '0';
     window.location = `/asset_life_sheet/pdf?code=${encodeURIComponent(code)}&allow_barcode=${allowBarcode}`;
   });
+  startCameraBtn?.addEventListener('click', () => startCamera());
+  stopCameraBtn?.addEventListener('click', () => stopCamera());
+  window.addEventListener('beforeunload', () => { stopCamera(); });
 });

@@ -2390,6 +2390,33 @@ tbody tr:hover {
   flex: 1 1 380px;
 }
 
+.life-camera-box {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #d8e7f2;
+  border-radius: 12px;
+  background: linear-gradient(130deg, #fbfdff 0%, #f3f8fd 100%);
+}
+
+.life-camera-box label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 700;
+  color: #0f4e75;
+}
+
+#lifeReader {
+  width: min(420px, 100%);
+  border: 1px solid #d8e7f2;
+  border-radius: 10px;
+  padding: 6px;
+  background: #ffffff;
+}
+
+.life-camera-actions {
+  margin-top: 8px;
+}
+
 .life-sheet-empty {
   min-height: 120px;
   border: 1px dashed #bcd6e8;
@@ -2797,6 +2824,10 @@ tbody tr:hover {
 
   .life-grid {
     grid-template-columns: 1fr;
+  }
+
+  #lifeReader {
+    width: 100%;
   }
 
   .life-label {
