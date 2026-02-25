@@ -27,6 +27,8 @@
   let docsPageSize = 10;
   let editOverlay = null;
   let noticeOverlay = null;
+  let previewOverlay = null;
+  let previewObjectUrl = '';
   let searchDebounce = null;
 
   function formatSize(bytes) {
@@ -34,6 +36,108 @@
     if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
     if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
     return `${n} B`;
+  }
+
+  function isPreviewable(ext) {
+    const e = String(ext || '').toLowerCase();
+    return ['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.txt', '.csv', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'].includes(e);
+  }
+
+  function releasePreviewObjectUrl() {
+    if (!previewObjectUrl) return;
+    try {
+      URL.revokeObjectURL(previewObjectUrl);
+    } catch (_) {
+      // noop
+    }
+    previewObjectUrl = '';
+  }
+
+  function ensurePreviewModal() {
+    if (previewOverlay) return previewOverlay;
+    previewOverlay = document.createElement('div');
+    previewOverlay.className = 'app-confirm-overlay docs-preview-overlay';
+    previewOverlay.hidden = true;
+    previewOverlay.innerHTML = `
+      <div class="app-confirm-card docs-preview-card" role="dialog" aria-modal="true" aria-labelledby="docsPreviewTitle">
+        <div class="app-confirm-head">
+          <h4 id="docsPreviewTitle">Vista previa</h4>
+        </div>
+        <div class="app-confirm-body docs-preview-body">
+          <div class="docs-preview-meta" id="docsPreviewMeta"></div>
+          <div class="docs-preview-frame-wrap">
+            <iframe id="docsPreviewFrame" class="docs-preview-frame" title="Vista previa de documento"></iframe>
+          </div>
+        </div>
+        <div class="app-confirm-actions">
+          <button id="docsPreviewClose" type="button" class="mini-btn app-confirm-cancel">Cerrar</button>
+          <button id="docsPreviewDownload" type="button" class="mini-btn app-confirm-ok">Descargar</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(previewOverlay);
+
+    const frame = previewOverlay.querySelector('#docsPreviewFrame');
+    const closeBtn = previewOverlay.querySelector('#docsPreviewClose');
+    const downloadBtn = previewOverlay.querySelector('#docsPreviewDownload');
+
+    const close = () => {
+      previewOverlay.hidden = true;
+      if (frame) frame.removeAttribute('src');
+      releasePreviewObjectUrl();
+    };
+    const onOverlayClick = (e) => {
+      if (e.target === previewOverlay) close();
+    };
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape' && previewOverlay && !previewOverlay.hidden) close();
+    };
+    const onClose = () => close();
+    const onDownload = () => {
+      const id = Number(downloadBtn?.getAttribute('data-doc-id') || 0);
+      if (!id) return;
+      window.location = `/documents/${id}/download`;
+    };
+
+    previewOverlay.addEventListener('click', onOverlayClick);
+    document.addEventListener('keydown', onKeyDown);
+    closeBtn?.addEventListener('click', onClose);
+    downloadBtn?.addEventListener('click', onDownload);
+    return previewOverlay;
+  }
+
+  async function openPreviewModal(item) {
+    const overlay = ensurePreviewModal();
+    const frame = overlay.querySelector('#docsPreviewFrame');
+    const meta = overlay.querySelector('#docsPreviewMeta');
+    const downloadBtn = overlay.querySelector('#docsPreviewDownload');
+    const id = Number(item?.id || 0);
+    if (!id) throw new Error('Documento invalido para vista previa.');
+
+    overlay.hidden = false;
+    if (meta) {
+      const extLabel = String(item?.file_ext || '').toUpperCase() || '-';
+      const name = String(item?.file_name || item?.title || `Documento ${id}`);
+      meta.textContent = `${name} (${extLabel})`;
+    }
+    if (downloadBtn) downloadBtn.setAttribute('data-doc-id', String(id));
+
+    try {
+      releasePreviewObjectUrl();
+      const res = await fetch(`/documents/${id}/preview`, { method: 'GET' });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload.error || `No se pudo cargar la vista previa (HTTP ${res.status}).`);
+      }
+      const blob = await res.blob();
+      previewObjectUrl = URL.createObjectURL(blob);
+      if (frame) frame.src = previewObjectUrl;
+    } catch (err) {
+      overlay.hidden = true;
+      if (frame) frame.removeAttribute('src');
+      releasePreviewObjectUrl();
+      throw err;
+    }
   }
 
   function setAssetFieldsDisabled(disabled) {
@@ -258,6 +362,7 @@
                   <span class="file-meta">${App.escapeHtml(String((r.file_ext || '').toUpperCase()))} Â· ${formatSize(r.file_size)}</span>
                 </td>
                 <td>
+                  ${isPreviewable(r.file_ext) ? `<button class="mini-btn" type="button" data-doc-preview="${r.id}">Vista previa</button>` : ''}
                   <button class="mini-btn" type="button" data-doc-download="${r.id}">Descargar</button>
                   <button class="mini-btn" type="button" data-doc-edit="${r.id}">Editar</button>
                   <button class="mini-btn docs-archive-btn" type="button" data-doc-archive="${r.id}">Archivar</button>
@@ -383,6 +488,22 @@
   });
 
   tableWrapEl?.addEventListener('click', async (e) => {
+    const previewBtn = e.target.closest('button[data-doc-preview]');
+    if (previewBtn) {
+      const id = Number(previewBtn.getAttribute('data-doc-preview') || 0);
+      if (!id) return;
+      const item = currentItems.find((x) => Number(x.id) === id);
+      if (!item) return;
+      try {
+        App.setStatus(statusEl, 'Cargando vista previa...');
+        await openPreviewModal(item);
+        App.setStatus(statusEl, '');
+      } catch (err) {
+        App.setStatus(statusEl, err.message, true);
+      }
+      return;
+    }
+
     const btn = e.target.closest('button[data-doc-download]');
     if (btn) {
       const id = Number(btn.getAttribute('data-doc-download') || 0);

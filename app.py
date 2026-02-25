@@ -7,6 +7,9 @@ def clean_filename(text):
     text = ''.join(c for c in text if c.isalnum() or c in ('_', '-', '.'))
     return text
 import os
+import shutil
+import subprocess
+import tempfile
 import zipfile
 import unicodedata
 import json
@@ -5998,6 +6001,7 @@ def allowed_document_extension(file_name):
         '.pdf', '.xlsx', '.xls', '.csv',
         '.png', '.jpg', '.jpeg', '.webp',
         '.doc', '.docx', '.txt',
+        '.ppt', '.pptx',
     }
     return ext in allowed
 
@@ -6015,9 +6019,158 @@ def document_mimetype_by_ext(ext):
         '.webp': 'image/webp',
         '.doc': 'application/msword',
         '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.ppt': 'application/vnd.ms-powerpoint',
+        '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
         '.txt': 'text/plain',
     }
     return mapping.get(ext, 'application/octet-stream')
+
+
+def get_document_preview_mode(ext):
+    ext = str(ext or '').lower()
+    direct_preview = {'.pdf', '.png', '.jpg', '.jpeg', '.webp', '.txt', '.csv'}
+    office_to_pdf_preview = {'.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'}
+    if ext in direct_preview:
+        return 'direct'
+    if ext in office_to_pdf_preview:
+        return 'office_to_pdf'
+    return 'unsupported'
+
+
+def _document_preview_cache_dir():
+    return os.path.join(DOCUMENTS_DIR, '_preview_cache')
+
+
+def _find_libreoffice_command():
+    candidates = [
+        shutil.which('soffice'),
+        shutil.which('libreoffice'),
+        os.path.join('C:\\', 'Program Files', 'LibreOffice', 'program', 'soffice.exe'),
+        os.path.join('C:\\', 'Program Files (x86)', 'LibreOffice', 'program', 'soffice.exe'),
+    ]
+    for cmd in candidates:
+        if cmd and os.path.exists(cmd):
+            return cmd
+    return None
+
+
+def _build_preview_pdf_path(row):
+    cache_dir = _document_preview_cache_dir()
+    os.makedirs(cache_dir, exist_ok=True)
+    base_name = clean_filename(os.path.splitext(row.file_name or f'documento_{row.id}')[0]) or f'documento_{row.id}'
+    fingerprint = f"{int(os.path.getmtime(row.file_path))}_{int(row.file_size or 0)}"
+    return os.path.join(cache_dir, f'{base_name}_{row.id}_{fingerprint}.pdf')
+
+
+def _convert_document_to_pdf_for_preview(row):
+    cmd = _find_libreoffice_command()
+    if not cmd:
+        raise RuntimeError('No se encontro LibreOffice en el servidor para convertir documentos Office a PDF.')
+
+    cache_dir = _document_preview_cache_dir()
+    os.makedirs(cache_dir, exist_ok=True)
+    final_pdf_path = _build_preview_pdf_path(row)
+    if os.path.exists(final_pdf_path):
+        return final_pdf_path
+
+    source_ext = os.path.splitext(str(row.file_path or ''))[1].lower()
+    staged_name = f'doc_preview_{row.id}_{int(os.path.getmtime(row.file_path))}{source_ext}'
+    try:
+        with tempfile.TemporaryDirectory(dir=cache_dir) as tmp_dir:
+            staged_input = os.path.join(tmp_dir, staged_name)
+            shutil.copy2(row.file_path, staged_input)
+            subprocess.run(
+                [cmd, '--headless', '--convert-to', 'pdf', '--outdir', tmp_dir, staged_input],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=120,
+            )
+            converted_pdf = os.path.join(tmp_dir, f"{os.path.splitext(staged_name)[0]}.pdf")
+            if not os.path.exists(converted_pdf):
+                raise RuntimeError('LibreOffice no devolvio un archivo PDF para la vista previa.')
+            shutil.copy2(converted_pdf, final_pdf_path)
+            return final_pdf_path
+    except subprocess.TimeoutExpired:
+        raise RuntimeError('La conversion a PDF excedio el tiempo limite (120s).')
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or '').strip()
+        stdout = (exc.stdout or '').strip()
+        detail = stderr or stdout or 'error desconocido'
+        raise RuntimeError(f'No fue posible convertir el documento a PDF: {detail}')
+
+
+def _document_preview_info_html(row, title, message):
+    safe_title = escape(str(title or 'Vista previa'))
+    safe_message = escape(str(message or 'No fue posible cargar la vista previa.'))
+    download_url = f"/documents/{int(row.id)}/download"
+    file_label = escape(str(row.file_name or os.path.basename(row.file_path or 'archivo')))
+    return f"""<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{safe_title}</title>
+  <style>
+    body {{
+      margin: 0;
+      font-family: Segoe UI, Arial, sans-serif;
+      background: #f4f8fc;
+      color: #123;
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
+      padding: 16px;
+    }}
+    .card {{
+      width: min(680px, 100%);
+      background: #fff;
+      border: 1px solid #d7e4ef;
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 8px 20px rgba(11, 36, 57, 0.12);
+    }}
+    h2 {{
+      margin: 0 0 10px;
+      color: #0f4e75;
+      font-size: 20px;
+    }}
+    p {{
+      margin: 0 0 12px;
+      color: #304f63;
+      line-height: 1.45;
+      font-size: 14px;
+    }}
+    a {{
+      display: inline-flex;
+      align-items: center;
+      height: 34px;
+      padding: 0 12px;
+      border-radius: 8px;
+      background: #0a7ea4;
+      color: #fff;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 13px;
+    }}
+    .name {{
+      margin-top: 10px;
+      font-size: 12px;
+      color: #607587;
+      word-break: break-all;
+    }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>{safe_title}</h2>
+    <p>{safe_message}</p>
+    <a href="{download_url}">Descargar archivo</a>
+    <div class="name">{file_label}</div>
+  </div>
+</body>
+</html>"""
 
 
 @app.route('/assets/find_by_code', methods=['GET'])
@@ -6176,6 +6329,53 @@ def documents_download(doc_id):
         download_name=row.file_name or os.path.basename(row.file_path),
         mimetype=mime
     )
+
+
+@app.route('/documents/<int:doc_id>/preview', methods=['GET'])
+def documents_preview(doc_id):
+    ensure_db()
+    row = DocumentRecord.query.filter_by(id=doc_id, status='active').first()
+    if not row:
+        return jsonify({'error': 'Documento no encontrado'}), 404
+    if not row.file_path or not os.path.exists(row.file_path):
+        return jsonify({'error': 'El archivo no existe en almacenamiento'}), 404
+
+    ext = str(row.file_ext or '').lower()
+    mode = get_document_preview_mode(ext)
+
+    if mode == 'direct':
+        mime = document_mimetype_by_ext(ext)
+        return send_file(
+            row.file_path,
+            as_attachment=False,
+            download_name=row.file_name or os.path.basename(row.file_path),
+            mimetype=mime
+        )
+
+    if mode == 'office_to_pdf':
+        try:
+            preview_pdf_path = _convert_document_to_pdf_for_preview(row)
+        except RuntimeError as exc:
+            html = _document_preview_info_html(
+                row,
+                'Vista previa no disponible',
+                f'No fue posible generar vista previa para este Office en el servidor. {str(exc)}'
+            )
+            return app.response_class(html, mimetype='text/html')
+        pdf_name = f"{os.path.splitext(row.file_name or os.path.basename(row.file_path))[0]}.pdf"
+        return send_file(
+            preview_pdf_path,
+            as_attachment=False,
+            download_name=pdf_name,
+            mimetype='application/pdf'
+        )
+
+    html = _document_preview_info_html(
+        row,
+        'Vista previa no disponible',
+        'Este tipo de archivo no se puede renderizar directamente en el navegador.'
+    )
+    return app.response_class(html, mimetype='text/html')
 
 
 @app.route('/documents/<int:doc_id>', methods=['PATCH'])
@@ -6803,7 +7003,7 @@ def a22_history_download(report_id):
         download_name=row.file_name or os.path.basename(row.file_path),
         mimetype=mime
     )
-
+                                                              
 
 if __name__ == '__main__':
     ensure_db()
