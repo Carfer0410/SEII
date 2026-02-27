@@ -842,9 +842,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!assetId) {
         throw new Error('No se pudo identificar el activo para actualizar servicio');
       }
-      await App.patch(`/assets/${assetId}/service`, {
+      const moveResult = await App.patch(`/assets/${assetId}/service`, {
         service: expected,
         run_id: activeRunId,
+        auto_transfer: true,
+        sync_location: true,
+        transfer_reason: `Escaneo fuera de alcance. Servicio base '${current}' regularizado a '${expected}'.`,
+        transfer_notes: 'Regularizacion automatica desde escaneo en inventario.',
         user: 'usuario_movil',
       });
 
@@ -854,7 +858,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       data = retry.data || {};
       movedFromMismatch = true;
-      App.setStatus(scanStatus, `Activo ${assetLabel} movido a ${expected} y marcado como encontrado.`);
+      const transferId = Number(moveResult?.transfer?.id || 0);
+      const transferTag = transferId ? ` | Traslado TR-${String(transferId).padStart(6, '0')} con acta generada.` : '';
+      App.setStatus(scanStatus, `Activo ${assetLabel} movido a ${expected}, ubicacion sincronizada y marcado como encontrado.${transferTag}`);
     } else if (!scanResult.ok) {
       throw new Error(data.error || `Error HTTP ${scanResult.status}`);
     }

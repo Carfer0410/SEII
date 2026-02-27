@@ -298,6 +298,7 @@ EXCLUDED_SERVICE_NAMES = {
 }
 ISSUE_STATUSES = ['Nuevo', 'En analisis', 'Escalado', 'Cerrado']
 ISSUE_SEVERITIES = ['Alta', 'Media', 'Baja']
+TRANSFER_STATUSES = ['Pendiente aprobacion', 'Aprobado', 'Rechazado', 'Ejecutado']
 ISSUE_TYPE_LABELS = {
     'NOT_FOUND_CRITICAL': 'No encontrado critico',
     'NOT_FOUND_HIGH_VALUE': 'No encontrado de alto valor',
@@ -654,6 +655,71 @@ class AssetIssue(db.Model):
             'assigned_to': self.assigned_to or '',
             'due_date': self.due_date or '',
             'resolution_notes': self.resolution_notes or '',
+            'created_at': self.created_at,
+            'created_at_local': format_dt_local(self.created_at),
+            'updated_at': self.updated_at,
+            'updated_at_local': format_dt_local(self.updated_at),
+        }
+
+
+class AssetTransferCase(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    issue_id = db.Column(db.Integer, db.ForeignKey('asset_issue.id'))
+    asset_id = db.Column(db.Integer, db.ForeignKey('asset.id'), nullable=False)
+    period_id = db.Column(db.Integer, db.ForeignKey('inventory_period.id'))
+    run_id = db.Column(db.Integer, db.ForeignKey('inventory_run.id'))
+    status = db.Column(db.String, nullable=False, default='Pendiente aprobacion')
+    origin_service = db.Column(db.String)
+    target_service = db.Column(db.String)
+    origin_responsible = db.Column(db.String)
+    target_responsible = db.Column(db.String)
+    justification = db.Column(db.String)
+    requested_by = db.Column(db.String)
+    requested_at = db.Column(db.String)
+    approved_by = db.Column(db.String)
+    approved_at = db.Column(db.String)
+    approval_notes = db.Column(db.String)
+    executed_by = db.Column(db.String)
+    executed_at = db.Column(db.String)
+    execution_notes = db.Column(db.String)
+    acta_doc_id = db.Column(db.Integer, db.ForeignKey('document_record.id'))
+    acta_file_path = db.Column(db.String)
+    created_at = db.Column(db.String, nullable=False)
+    updated_at = db.Column(db.String, nullable=False)
+
+    def to_dict(self):
+        asset = Asset.query.get(self.asset_id) if self.asset_id else None
+        issue = AssetIssue.query.get(self.issue_id) if self.issue_id else None
+        return {
+            'id': self.id,
+            'issue_id': self.issue_id,
+            'issue_type': issue.issue_type if issue else '',
+            'issue_title': issue.title if issue else '',
+            'asset_id': self.asset_id,
+            'asset_code': asset.c_act if asset else '',
+            'asset_name': asset.nom if asset else '',
+            'period_id': self.period_id,
+            'run_id': self.run_id,
+            'status': self.status,
+            'origin_service': self.origin_service or '',
+            'target_service': self.target_service or '',
+            'origin_responsible': self.origin_responsible or '',
+            'target_responsible': self.target_responsible or '',
+            'justification': self.justification or '',
+            'requested_by': self.requested_by or '',
+            'requested_at': self.requested_at,
+            'requested_at_local': format_dt_local(self.requested_at),
+            'approved_by': self.approved_by or '',
+            'approved_at': self.approved_at,
+            'approved_at_local': format_dt_local(self.approved_at),
+            'approval_notes': self.approval_notes or '',
+            'executed_by': self.executed_by or '',
+            'executed_at': self.executed_at,
+            'executed_at_local': format_dt_local(self.executed_at),
+            'execution_notes': self.execution_notes or '',
+            'acta_doc_id': self.acta_doc_id,
+            'acta_available': bool(self.acta_doc_id),
+            'acta_download_url': f"/transfers/{self.id}/acta" if self.acta_doc_id else '',
             'created_at': self.created_at,
             'created_at_local': format_dt_local(self.created_at),
             'updated_at': self.updated_at,
@@ -3029,6 +3095,48 @@ def period_service_coverage(period_id):
     })
 
 
+@app.route('/periods/<int:period_id>/closed_services', methods=['GET'])
+def period_closed_services(period_id):
+    ensure_db()
+    period = InventoryPeriod.query.get(period_id)
+    if not period:
+        return jsonify({'error': 'Periodo no encontrado'}), 404
+
+    closed_runs = InventoryRun.query.filter_by(period_id=period_id, status='closed').all()
+    service_map = {}
+    for run in closed_runs:
+        run_name = str(run.name or '').strip() or f'Jornada {run.id}'
+        for svc in run_scope_services(run):
+            svc_name = str(svc or '').strip()
+            if not svc_name:
+                continue
+            if svc_name not in service_map:
+                service_map[svc_name] = []
+            service_map[svc_name].append({
+                'run_id': run.id,
+                'run_name': run_name,
+                'closed_at': run.closed_at,
+                'closed_at_local': format_dt_local(run.closed_at),
+            })
+
+    items = []
+    for svc_name in sorted(service_map.keys(), key=lambda x: x.casefold()):
+        runs = sorted(service_map[svc_name], key=lambda x: x.get('run_id') or 0)
+        items.append({
+            'service': svc_name,
+            'runs': runs,
+            'last_run_name': runs[-1].get('run_name') if runs else '',
+            'last_closed_at': runs[-1].get('closed_at') if runs else '',
+            'last_closed_at_local': runs[-1].get('closed_at_local') if runs else '',
+        })
+
+    return jsonify({
+        'period': period.to_dict(),
+        'total_closed_services': len(items),
+        'items': items,
+    })
+
+
 def detect_asset_issues_for_period(period_id, analyze_base=False):
     period = InventoryPeriod.query.get(period_id)
     if not period:
@@ -3326,6 +3434,332 @@ def issues_update(issue_id):
     return jsonify({'item': row.to_dict()})
 
 
+def append_text_note(base_text, extra_text):
+    base = str(base_text or '').strip()
+    extra = str(extra_text or '').strip()
+    if not extra:
+        return base
+    return f"{base} | {extra}" if base else extra
+
+
+def build_transfer_acta_pdf_bytes(transfer_row, asset, issue=None):
+    out = BytesIO()
+    doc = SimpleDocTemplate(
+        out,
+        pagesize=letter,
+        leftMargin=14 * mm,
+        rightMargin=14 * mm,
+        topMargin=18 * mm,
+        bottomMargin=12 * mm,
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'transfer_title',
+        parent=styles['Heading2'],
+        fontSize=14,
+        textColor=colors.HexColor('#0B4F6C'),
+    )
+    text_style = ParagraphStyle('transfer_text', parent=styles['Normal'], fontSize=9, leading=11)
+
+    story = []
+    story.append(Paragraph('Acta de traslado de activo fijo', title_style))
+    story.append(Spacer(1, 6))
+
+    header_data = [
+        ['Consecutivo', f'TR-{transfer_row.id:06d}'],
+        ['Fecha ejecucion', format_dt_local(transfer_row.executed_at) or format_dt_local(now_iso())],
+        ['Activo', f"{asset.c_act or ''} - {asset.nom or ''}"],
+        ['Servicio origen', transfer_row.origin_service or 'No definido'],
+        ['Servicio destino', transfer_row.target_service or 'No definido'],
+        ['Responsable origen', transfer_row.origin_responsible or 'No definido'],
+        ['Responsable destino', transfer_row.target_responsible or 'No definido'],
+        ['Solicitado por', transfer_row.requested_by or 'No definido'],
+        ['Aprobado por', transfer_row.approved_by or 'No definido'],
+        ['Ejecutado por', transfer_row.executed_by or 'No definido'],
+    ]
+    header = Table(header_data, colWidths=[55 * mm, 125 * mm])
+    header.setStyle(TableStyle([
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#C9DCE8')),
+        ('INNERGRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#DCE8F0')),
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#F2F8FD')),
+    ]))
+    story.append(header)
+    story.append(Spacer(1, 8))
+
+    story.append(Paragraph('<b>Justificacion del traslado</b>', text_style))
+    story.append(Paragraph(escape(transfer_row.justification or 'Sin justificacion registrada.'), text_style))
+    story.append(Spacer(1, 6))
+    story.append(Paragraph('<b>Observaciones de ejecucion</b>', text_style))
+    story.append(Paragraph(escape(transfer_row.execution_notes or 'Sin observaciones adicionales.'), text_style))
+    if issue:
+        story.append(Spacer(1, 6))
+        story.append(Paragraph('<b>Novedad origen</b>', text_style))
+        story.append(Paragraph(escape(f"{issue.title or ''}: {issue.description or ''}"), text_style))
+
+    story.append(Spacer(1, 12))
+    sign = Table([
+        ['Firma entrega', 'Firma recibe', 'Vo.Bo Activos Fijos'],
+        ['\n\n\n', '\n\n\n', '\n\n\n'],
+    ], colWidths=[60 * mm, 60 * mm, 60 * mm])
+    sign.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOX', (0, 0), (-1, -1), 0.4, colors.HexColor('#DCE8F0')),
+        ('INNERGRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#E7EEF4')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F7FBFD')),
+    ]))
+    story.append(sign)
+
+    doc.build(
+        story,
+        onFirstPage=make_pdf_page_header(get_hospital_logo_path()),
+        onLaterPages=make_pdf_page_header(get_hospital_logo_path()),
+    )
+    out.seek(0)
+    return out.read()
+
+
+@app.route('/transfers', methods=['GET'])
+def transfers_list():
+    ensure_db()
+    period_id = request.args.get('period_id', type=int)
+    status = str(request.args.get('status') or '').strip()
+    asset_code = str(request.args.get('asset_code') or '').strip()
+
+    q = AssetTransferCase.query
+    if period_id:
+        q = q.filter(AssetTransferCase.period_id == period_id)
+    if status and status in TRANSFER_STATUSES:
+        q = q.filter(AssetTransferCase.status == status)
+    if asset_code:
+        asset = get_asset_by_c_act_strict(asset_code)
+        if not asset:
+            return jsonify({'items': []})
+        q = q.filter(AssetTransferCase.asset_id == asset.id)
+
+    rows = q.order_by(AssetTransferCase.id.desc()).limit(500).all()
+    return jsonify({
+        'items': [r.to_dict() for r in rows],
+        'meta': {'statuses': TRANSFER_STATUSES},
+    })
+
+
+@app.route('/transfers/from_issue', methods=['POST'])
+def transfers_create_from_issue():
+    ensure_db()
+    data = request.get_json() or {}
+    issue_id = data.get('issue_id')
+    try:
+        issue_id = int(issue_id)
+    except Exception:
+        issue_id = None
+    if not issue_id:
+        return jsonify({'error': 'Debes indicar la novedad origen'}), 400
+
+    issue = AssetIssue.query.get(issue_id)
+    if not issue:
+        return jsonify({'error': 'Novedad no encontrada'}), 404
+    if not issue.asset_id:
+        return jsonify({'error': 'La novedad no tiene activo asociado'}), 400
+    if issue.issue_type not in {'SCANNED_OTHER_SERVICE', 'LOCATION_REVIEW', 'RESPONSIBLE_REVIEW'}:
+        return jsonify({'error': 'Esta novedad no aplica para traslado'}), 400
+
+    asset = Asset.query.get(issue.asset_id)
+    if not asset:
+        return jsonify({'error': 'Activo no encontrado'}), 404
+
+    target_service = str(data.get('target_service') or '').strip()
+    target_responsible = str(data.get('target_responsible') or '').strip()
+    requested_by = str(data.get('requested_by') or '').strip() or 'coordinador_activos'
+    justification = str(data.get('justification') or '').strip() or (issue.description or '')
+
+    if not target_service:
+        return jsonify({'error': 'Debes indicar el servicio destino'}), 400
+
+    existing = AssetTransferCase.query.filter(
+        AssetTransferCase.asset_id == issue.asset_id,
+        AssetTransferCase.period_id == issue.period_id,
+        AssetTransferCase.status.in_(['Pendiente aprobacion', 'Aprobado'])
+    ).order_by(AssetTransferCase.id.desc()).first()
+    if existing:
+        return jsonify({'item': existing.to_dict(), 'existing': True})
+
+    now_value = now_iso()
+    row = AssetTransferCase(
+        issue_id=issue.id,
+        asset_id=issue.asset_id,
+        period_id=issue.period_id,
+        run_id=issue.run_id,
+        status='Pendiente aprobacion',
+        origin_service=str(asset.nom_ccos or '').strip(),
+        target_service=target_service,
+        origin_responsible=str(asset.nom_resp or '').strip(),
+        target_responsible=target_responsible,
+        justification=justification,
+        requested_by=requested_by,
+        requested_at=now_value,
+        created_at=now_value,
+        updated_at=now_value,
+    )
+    db.session.add(row)
+    if issue.status == 'Nuevo':
+        issue.status = 'Escalado'
+    issue.updated_at = now_value
+    db.session.commit()
+    return jsonify({'item': row.to_dict(), 'existing': False})
+
+
+@app.route('/transfers/<int:transfer_id>/approve', methods=['PATCH'])
+def transfers_approve(transfer_id):
+    ensure_db()
+    row = AssetTransferCase.query.get(transfer_id)
+    if not row:
+        return jsonify({'error': 'Caso de traslado no encontrado'}), 404
+    if row.status == 'Ejecutado':
+        return jsonify({'error': 'El caso ya fue ejecutado'}), 400
+
+    data = request.get_json() or {}
+    decision = str(data.get('decision') or 'approve').strip().lower()
+    approved_by = str(data.get('approved_by') or '').strip() or 'jefe_activos'
+    approval_notes = str(data.get('approval_notes') or '').strip()
+
+    now_value = now_iso()
+    if decision == 'reject':
+        row.status = 'Rechazado'
+    else:
+        row.status = 'Aprobado'
+    row.approved_by = approved_by
+    row.approved_at = now_value
+    row.approval_notes = approval_notes
+    row.updated_at = now_value
+
+    issue = AssetIssue.query.get(row.issue_id) if row.issue_id else None
+    if issue:
+        issue.status = 'En analisis' if row.status == 'Aprobado' else 'Cerrado'
+        issue.resolution_notes = append_text_note(issue.resolution_notes, approval_notes)
+        issue.updated_at = now_value
+
+    db.session.commit()
+    return jsonify({'item': row.to_dict()})
+
+
+@app.route('/transfers/<int:transfer_id>/execute', methods=['PATCH'])
+def transfers_execute(transfer_id):
+    ensure_db()
+    row = AssetTransferCase.query.get(transfer_id)
+    if not row:
+        return jsonify({'error': 'Caso de traslado no encontrado'}), 404
+    if row.status != 'Aprobado':
+        return jsonify({'error': 'Solo se pueden ejecutar casos aprobados'}), 400
+    if not str(row.target_service or '').strip():
+        return jsonify({'error': 'El caso no tiene servicio destino'}), 400
+
+    asset = Asset.query.get(row.asset_id)
+    if not asset:
+        return jsonify({'error': 'Activo no encontrado'}), 404
+
+    data = request.get_json() or {}
+    executed_by = str(data.get('executed_by') or '').strip() or 'equipo_activos'
+    execution_notes = str(data.get('execution_notes') or '').strip()
+    now_value = now_iso()
+
+    previous_service = str(asset.nom_ccos or '').strip()
+    previous_responsible = str(asset.nom_resp or '').strip()
+    asset.nom_ccos = str(row.target_service or '').strip()
+    if str(row.target_responsible or '').strip():
+        asset.nom_resp = str(row.target_responsible or '').strip()
+    asset.observacion_inventario = append_text_note(
+        asset.observacion_inventario,
+        f"Traslado ejecutado {format_dt_local(now_value)}: {previous_service or 'N/D'} -> {asset.nom_ccos or 'N/D'}",
+    )
+    asset.fecha_verificacion = now_value
+    asset.usuario_verificador = executed_by
+
+    row.status = 'Ejecutado'
+    row.executed_by = executed_by
+    row.executed_at = now_value
+    row.execution_notes = execution_notes
+    row.updated_at = now_value
+
+    issue = AssetIssue.query.get(row.issue_id) if row.issue_id else None
+    if issue:
+        issue.status = 'Cerrado'
+        issue.resolution_notes = append_text_note(
+            issue.resolution_notes,
+            f"Traslado ejecutado a '{asset.nom_ccos or ''}'.",
+        )
+        issue.updated_at = now_value
+
+    sibling_issues = AssetIssue.query.filter(
+        AssetIssue.asset_id == asset.id,
+        AssetIssue.period_id == row.period_id,
+        AssetIssue.issue_type.in_(['SCANNED_OTHER_SERVICE', 'LOCATION_REVIEW', 'RESPONSIBLE_REVIEW']),
+        AssetIssue.status != 'Cerrado'
+    ).all()
+    for sibling in sibling_issues:
+        sibling.status = 'Cerrado'
+        sibling.resolution_notes = append_text_note(
+            sibling.resolution_notes,
+            f"Cierre automatico por traslado ejecutado hacia '{asset.nom_ccos or ''}'.",
+        )
+        sibling.updated_at = now_value
+
+    pdf_bytes = build_transfer_acta_pdf_bytes(row, asset, issue=issue)
+    timestamp = now_local_dt().strftime('%Y%m%d%H%M%S')
+    public_name = f"acta_traslado_{clean_filename(asset.c_act)}_{timestamp}.pdf"
+    storage_name = f"{clean_filename(os.path.splitext(public_name)[0])}_{timestamp}.pdf"
+    file_path = os.path.join(DOCUMENTS_DIR, storage_name)
+    with open(file_path, 'wb') as fp:
+        fp.write(pdf_bytes)
+
+    doc_row = DocumentRecord(
+        link_type='asset',
+        asset_id=asset.id,
+        asset_code=asset.c_act or '',
+        asset_name=asset.nom or '',
+        document_type='Novedad',
+        title=f'Acta de traslado {asset.c_act or ""}',
+        description=f'Traslado ejecutado de {previous_service or "N/D"} a {asset.nom_ccos or "N/D"}. '
+                    f'Responsable anterior: {previous_responsible or "N/D"}. Responsable actual: {asset.nom_resp or "N/D"}.',
+        doc_date=now_local_dt().strftime('%Y-%m-%d'),
+        area_service=asset.nom_ccos or '',
+        radicado=f'TR-{row.id:06d}',
+        file_name=public_name,
+        file_path=file_path,
+        file_ext='.pdf',
+        file_size=len(pdf_bytes),
+        uploaded_by=executed_by,
+        uploaded_at=now_value,
+        status='active',
+    )
+    db.session.add(doc_row)
+    db.session.flush()
+
+    row.acta_doc_id = doc_row.id
+    row.acta_file_path = file_path
+    db.session.commit()
+    return jsonify({'item': row.to_dict()})
+
+
+@app.route('/transfers/<int:transfer_id>/acta', methods=['GET'])
+def transfers_acta_download(transfer_id):
+    ensure_db()
+    row = AssetTransferCase.query.get(transfer_id)
+    if not row:
+        return jsonify({'error': 'Caso de traslado no encontrado'}), 404
+    if not row.acta_doc_id:
+        return jsonify({'error': 'El caso aun no tiene acta'}), 404
+    doc_row = DocumentRecord.query.filter_by(id=row.acta_doc_id, status='active').first()
+    if not doc_row or not doc_row.file_path or not os.path.exists(doc_row.file_path):
+        return jsonify({'error': 'Acta no disponible en almacenamiento'}), 404
+    return send_file(
+        doc_row.file_path,
+        as_attachment=True,
+        download_name=doc_row.file_name or os.path.basename(doc_row.file_path),
+        mimetype='application/pdf'
+    )
+
+
 @app.route('/issues/report_pdf', methods=['GET'])
 def issues_report_pdf():
     ensure_db()
@@ -3545,10 +3979,16 @@ def update_asset_service(asset_id):
     service = (data.get('service') or '').strip()
     user = (data.get('user') or '').strip() or 'usuario_movil'
     run_id = data.get('run_id')
+    period_id = data.get('period_id')
+    auto_transfer = parse_bool(data.get('auto_transfer'), default=False)
+    sync_location = parse_bool(data.get('sync_location'), default=False)
+    transfer_reason = (data.get('transfer_reason') or '').strip()
+    transfer_notes = (data.get('transfer_notes') or '').strip()
 
     if not service:
         return jsonify({'error': 'Debe enviar el servicio destino'}), 400
 
+    run = None
     if run_id is not None:
         run = InventoryRun.query.get(run_id)
         if not run:
@@ -3562,15 +4002,127 @@ def update_asset_service(asset_id):
 
     now_iso_value = now_iso()
     old_service = str(asset.nom_ccos or '').strip()
+    old_location = str(asset.des_ubi or '').strip()
+    old_responsible = str(asset.nom_resp or '').strip()
     asset.nom_ccos = service
+    if sync_location:
+        asset.des_ubi = service
     asset.fecha_verificacion = now_iso_value
     asset.usuario_verificador = user
+
+    transfer_payload = None
+    if auto_transfer:
+        resolved_period_id = None
+        if run and run.period_id:
+            resolved_period_id = run.period_id
+        if resolved_period_id is None and period_id not in (None, ''):
+            try:
+                resolved_period_id = int(period_id)
+            except Exception:
+                resolved_period_id = None
+
+        linked_issue = None
+        if resolved_period_id:
+            linked_issue = AssetIssue.query.filter(
+                AssetIssue.asset_id == asset.id,
+                AssetIssue.period_id == resolved_period_id,
+                AssetIssue.issue_type.in_(['SCANNED_OTHER_SERVICE', 'LOCATION_REVIEW', 'RESPONSIBLE_REVIEW'])
+            ).order_by(AssetIssue.id.desc()).first()
+
+        justification = transfer_reason or (
+            f"Traslado automatico por escaneo fuera de alcance de jornada. Servicio anterior: '{old_service or 'N/D'}'."
+        )
+        execution_notes = transfer_notes or (
+            f"Regularizacion automatica desde modulo Inventario. "
+            f"Ubicacion {'sincronizada' if sync_location else 'no sincronizada'} a '{service}'."
+        )
+        transfer_row = AssetTransferCase(
+            issue_id=linked_issue.id if linked_issue else None,
+            asset_id=asset.id,
+            period_id=resolved_period_id,
+            run_id=run.id if run else None,
+            status='Ejecutado',
+            origin_service=old_service,
+            target_service=service,
+            origin_responsible=old_responsible,
+            target_responsible=str(asset.nom_resp or '').strip(),
+            justification=justification,
+            requested_by=user,
+            requested_at=now_iso_value,
+            approved_by=user,
+            approved_at=now_iso_value,
+            approval_notes='Aprobacion automatica por regularizacion operativa de inventario.',
+            executed_by=user,
+            executed_at=now_iso_value,
+            execution_notes=execution_notes,
+            created_at=now_iso_value,
+            updated_at=now_iso_value,
+        )
+        db.session.add(transfer_row)
+        db.session.flush()
+
+        if resolved_period_id:
+            open_related_issues = AssetIssue.query.filter(
+                AssetIssue.asset_id == asset.id,
+                AssetIssue.period_id == resolved_period_id,
+                AssetIssue.issue_type.in_(['SCANNED_OTHER_SERVICE', 'LOCATION_REVIEW', 'RESPONSIBLE_REVIEW']),
+                AssetIssue.status != 'Cerrado'
+            ).all()
+            for issue_row in open_related_issues:
+                issue_row.status = 'Cerrado'
+                issue_row.resolution_notes = append_text_note(
+                    issue_row.resolution_notes,
+                    f"Cierre automatico por traslado ejecutado a '{service}'.",
+                )
+                issue_row.updated_at = now_iso_value
+
+        pdf_bytes = build_transfer_acta_pdf_bytes(transfer_row, asset, issue=linked_issue)
+        timestamp = now_local_dt().strftime('%Y%m%d%H%M%S')
+        public_name = f"acta_traslado_{clean_filename(asset.c_act)}_{timestamp}.pdf"
+        storage_name = f"{clean_filename(os.path.splitext(public_name)[0])}_{timestamp}.pdf"
+        file_path = os.path.join(DOCUMENTS_DIR, storage_name)
+        with open(file_path, 'wb') as fp:
+            fp.write(pdf_bytes)
+
+        doc_row = DocumentRecord(
+            link_type='asset',
+            asset_id=asset.id,
+            asset_code=asset.c_act or '',
+            asset_name=asset.nom or '',
+            document_type='Novedad',
+            title=f'Acta de traslado {asset.c_act or ""}',
+            description=(
+                f"Traslado automatico por escaneo fuera de alcance. "
+                f"Servicio: {old_service or 'N/D'} -> {service or 'N/D'}. "
+                f"Ubicacion: {old_location or 'N/D'} -> {asset.des_ubi or 'N/D'}."
+            ),
+            doc_date=now_local_dt().strftime('%Y-%m-%d'),
+            area_service=service,
+            radicado=f'TR-{transfer_row.id:06d}',
+            file_name=public_name,
+            file_path=file_path,
+            file_ext='.pdf',
+            file_size=len(pdf_bytes),
+            uploaded_by=user,
+            uploaded_at=now_iso_value,
+            status='active',
+        )
+        db.session.add(doc_row)
+        db.session.flush()
+        transfer_row.acta_doc_id = doc_row.id
+        transfer_row.acta_file_path = file_path
+        transfer_payload = transfer_row.to_dict()
+
     db.session.commit()
     return jsonify({
         'ok': True,
         'asset': asset.to_dict(),
         'old_service': old_service,
         'new_service': service,
+        'old_location': old_location,
+        'new_location': str(asset.des_ubi or '').strip(),
+        'location_synced': bool(sync_location),
+        'transfer': transfer_payload,
     })
 
 
@@ -4944,6 +5496,31 @@ def create_run():
         return jsonify({'error': 'Periodo no encontrado'}), 404
     if period.status != 'open':
         return jsonify({'error': 'El periodo seleccionado esta cerrado o anulado'}), 400
+
+    # Regla operativa: un servicio solo se puede inventariar una vez por periodo
+    # cuando ya hizo parte de una jornada cerrada.
+    requested_services_map = {str(s or '').strip().casefold(): str(s or '').strip() for s in services if str(s or '').strip()}
+    closed_runs = InventoryRun.query.filter(
+        InventoryRun.period_id == period.id,
+        InventoryRun.status == 'closed'
+    ).all()
+    blocked_services = {}
+    for closed_run in closed_runs:
+        closed_scope_cf = {str(s or '').strip().casefold() for s in run_scope_services(closed_run)}
+        for svc_cf, svc_label in requested_services_map.items():
+            if svc_cf in closed_scope_cf and svc_label not in blocked_services:
+                blocked_services[svc_label] = closed_run.name or f'ID {closed_run.id}'
+
+    if blocked_services:
+        blocked_detail = ', '.join(
+            [f'{svc} (jornada "{run_name}")' for svc, run_name in blocked_services.items()]
+        )
+        return jsonify({
+            'error': (
+                'No puedes crear la jornada porque estos servicios ya fueron ejecutados/cerrados '
+                f'en este periodo: {blocked_detail}.'
+            )
+        }), 400
 
     run = InventoryRun(
         name=name,
@@ -7008,4 +7585,3 @@ def a22_history_download(report_id):
 if __name__ == '__main__':
     ensure_db()
     app.run(debug=True)
-

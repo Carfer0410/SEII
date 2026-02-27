@@ -19,6 +19,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const selectedServicesCount = document.getElementById(
     "selectedServicesCount",
   );
+  const servicePolicyHint = document.getElementById("servicePolicyHint");
   const selectAllServicesBtn = document.getElementById("selectAllServicesBtn");
   const clearServicesBtn = document.getElementById("clearServicesBtn");
   const createRunBtn = document.getElementById("createRunBtn");
@@ -37,6 +38,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let closedPageSize = 10;
   let allServices = [];
   let selectedServiceSet = new Set();
+  let blockedServiceMap = new Map();
   let reasonOverlay = null;
   let successOverlay = null;
 
@@ -281,6 +283,31 @@ document.addEventListener("DOMContentLoaded", () => {
     return allServices.filter((svc) => selectedServiceSet.has(svc));
   }
 
+  function normalizeKey(value) {
+    return String(value || "").trim().toLowerCase();
+  }
+
+  function blockedInfoForService(serviceName) {
+    return blockedServiceMap.get(normalizeKey(serviceName)) || null;
+  }
+
+  function renderServicePolicyHint() {
+    if (!servicePolicyHint) return;
+    const pid = periodSelect?.value ? Number(periodSelect.value) : null;
+    if (!pid) {
+      servicePolicyHint.textContent =
+        "Selecciona un periodo para bloquear automaticamente servicios ya cerrados.";
+      return;
+    }
+    const totalBlocked = blockedServiceMap.size;
+    if (!totalBlocked) {
+      servicePolicyHint.textContent =
+        "En este periodo aun no hay servicios cerrados. Puedes seleccionar cualquier servicio.";
+      return;
+    }
+    servicePolicyHint.textContent = `Servicios bloqueados por cierre en este periodo: ${totalBlocked}. Se muestran con la etiqueta "Cerrado".`;
+  }
+
   async function loadImportStatus() {
     if (!importCurrentBase) return;
     try {
@@ -348,11 +375,19 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     servicePickerList.innerHTML = filtered
       .map((svc) => {
+        const blockedInfo = blockedInfoForService(svc);
+        const isBlocked = !!blockedInfo;
         const checked = selectedServiceSet.has(svc) ? "checked" : "";
+        const disabled = isBlocked ? "disabled" : "";
+        const blockedClass = isBlocked ? "is-blocked" : "";
+        const blockedMeta = isBlocked
+          ? ` title="Servicio ya cerrado en la jornada ${App.escapeHtml(blockedInfo.last_run_name || "")}"`
+          : "";
         return `
-        <label class="jour-service-item">
-          <input type="checkbox" data-service-check="${App.escapeHtml(svc)}" ${checked} />
+        <label class="jour-service-item ${blockedClass}"${blockedMeta}>
+          <input type="checkbox" data-service-check="${App.escapeHtml(svc)}" ${checked} ${disabled} />
           <span>${App.escapeHtml(svc)}</span>
+          ${isBlocked ? '<span class="jour-service-badge">Cerrado</span>' : ""}
         </label>
       `;
       })
@@ -365,9 +400,31 @@ document.addEventListener("DOMContentLoaded", () => {
     allServices = (data.services || []).slice();
     const keep = new Set();
     for (const svc of allServices) {
-      if (selectedServiceSet.has(svc)) keep.add(svc);
+      if (selectedServiceSet.has(svc) && !blockedInfoForService(svc)) keep.add(svc);
     }
     selectedServiceSet = keep;
+    renderServicePicker();
+  }
+
+  async function loadClosedServicesForCreatePeriod() {
+    const pid = periodSelect?.value ? Number(periodSelect.value) : null;
+    blockedServiceMap = new Map();
+    if (!pid) {
+      renderServicePolicyHint();
+      renderServicePicker();
+      return;
+    }
+    const data = await App.get(`/periods/${pid}/closed_services`);
+    for (const row of data.items || []) {
+      const svc = String(row.service || "").trim();
+      if (!svc) continue;
+      blockedServiceMap.set(normalizeKey(svc), row);
+    }
+
+    for (const svc of Array.from(selectedServiceSet)) {
+      if (blockedInfoForService(svc)) selectedServiceSet.delete(svc);
+    }
+    renderServicePolicyHint();
     renderServicePicker();
   }
 
@@ -377,7 +434,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function renderClosedRunsTable(rows) {
     if (!rows.length)
-      return '<div class="empty-mini">No hay jornadas cerradas.</div>';
+      return '<div class="empty-mini">No hay jornadas en historial.</div>';
     const total = rows.length;
     const totalPages = Math.max(1, Math.ceil(total / closedPageSize));
     if (closedPage > totalPages) closedPage = totalPages;
@@ -399,16 +456,30 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
       </div>
       <div class="closed-runs-wrap"><table class="closed-runs-table closed-runs-table-compact"><thead><tr>
-      <th>ID</th><th>JORNADA</th><th>SERVICIO</th><th>HALLAZGOS <span title="E=Encontrados, NE=No encontrados">(E/NE)</span></th><th>INICIO</th><th>CIERRE</th>
+      <th>ID</th><th>JORNADA</th><th>SERVICIO</th><th>ESTADO</th><th>MOTIVO</th><th>HALLAZGOS <span title="E=Encontrados, NE=No encontrados">(E/NE)</span></th><th>INICIO</th><th>CIERRE</th>
     </tr></thead><tbody>${cut
       .map(
-        (r) => `<tr>
+        (r) => {
+          const rawStatus = String(r.status || "").trim().toLowerCase();
+          let statusLabel = "Cerrada";
+          if (rawStatus === "cancelled" || rawStatus === "anulada")
+            statusLabel = "Anulada";
+          else if (rawStatus === "deleted" || rawStatus === "eliminada")
+            statusLabel = "Eliminada";
+          else if (rawStatus === "closed" || rawStatus === "cerrada")
+            statusLabel = "Cerrada";
+          const reason =
+            String(r.cancel_reason || "").trim() ||
+            (statusLabel === "Cerrada" ? "Cierre normal" : "Sin motivo registrado");
+          return `<tr>
       <td>${App.escapeHtml(r.id)}</td>
       <td>
         <div class="closed-run-title">${App.escapeHtml(r.name)}</div>
         <div class="closed-run-sub">${App.escapeHtml(r.period_name || "-")}</div>
       </td>
       <td>${App.escapeHtml(r.service_scope_label || r.service || "TODOS")}</td>
+      <td>${App.escapeHtml(statusLabel)}</td>
+      <td class="cell-clip" title="${App.escapeHtml(reason)}">${App.escapeHtml(reason)}</td>
       <td>
         <div class="closed-metrics">
           <span class="closed-metric ok">E: ${App.escapeHtml(r.found || 0)}</span>
@@ -425,7 +496,8 @@ document.addEventListener("DOMContentLoaded", () => {
           .replace("T", " ")
           .slice(0, 16),
       )}</td>
-    </tr>`,
+    </tr>`;
+        },
       )
       .join("")}</tbody></table></div>
     `;
@@ -546,6 +618,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       await loadServicePicker();
       await loadPeriodsView();
+      await loadClosedServicesForCreatePeriod();
       await loadRunsView(selectedRunId());
       await refreshSummary();
       await loadImportStatus();
@@ -579,6 +652,13 @@ document.addEventListener("DOMContentLoaded", () => {
       return App.setStatus(
         statusEl,
         "Selecciona al menos un servicio para la jornada",
+        true,
+      );
+    const blockedSelected = services.filter((svc) => blockedInfoForService(svc));
+    if (blockedSelected.length)
+      return App.setStatus(
+        statusEl,
+        `No puedes incluir servicios ya cerrados en el periodo: ${blockedSelected.join(", ")}`,
         true,
       );
     try {
@@ -621,6 +701,11 @@ document.addEventListener("DOMContentLoaded", () => {
       .then(refreshSummary)
       .catch((e) => App.setStatus(statusEl, e.message, true));
   });
+  periodSelect?.addEventListener("change", () => {
+    loadClosedServicesForCreatePeriod().catch((e) =>
+      App.setStatus(statusEl, e.message, true),
+    );
+  });
 
   createPeriodBtn?.addEventListener("click", async () => {
     const name = (periodName?.value || "").trim();
@@ -631,6 +716,7 @@ document.addEventListener("DOMContentLoaded", () => {
       await App.post("/periods", { name, period_type: type });
       if (periodName) periodName.value = "";
       await loadPeriodsView();
+      await loadClosedServicesForCreatePeriod();
       await loadRunsView(null);
       await refreshSummary();
       await showConfirmModal({
@@ -648,6 +734,7 @@ document.addEventListener("DOMContentLoaded", () => {
   refreshPeriodsBtn?.addEventListener("click", async () => {
     try {
       await loadPeriodsView();
+      await loadClosedServicesForCreatePeriod();
       await loadRunsView(selectedRunId());
       await refreshSummary();
       App.setStatus(statusEl, "Periodos actualizados");
@@ -671,6 +758,7 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       await App.post(`/periods/${pid}/close`, {});
       await loadPeriodsView();
+      await loadClosedServicesForCreatePeriod();
       await loadRunsView(null);
       await refreshSummary();
       App.setStatus(statusEl, "Periodo cerrado");
@@ -700,6 +788,7 @@ document.addEventListener("DOMContentLoaded", () => {
         user: "usuario_movil",
       });
       await loadPeriodsView();
+      await loadClosedServicesForCreatePeriod();
       await loadRunsView(null);
       await refreshSummary();
       App.setStatus(
@@ -730,6 +819,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await App.post(`/runs/${id}/close`, {
         user: "usuario_movil",
       });
+      await loadClosedServicesForCreatePeriod();
       await loadRunsView(null);
       await refreshSummary();
       // Modal de éxito reutilizando el estilo de confirmación
@@ -786,7 +876,7 @@ document.addEventListener("DOMContentLoaded", () => {
       .trim()
       .toLowerCase();
     allServices.forEach((svc) => {
-      if (!term || svc.toLowerCase().includes(term))
+      if ((!term || svc.toLowerCase().includes(term)) && !blockedInfoForService(svc))
         selectedServiceSet.add(svc);
     });
     renderServicePicker();
@@ -802,6 +892,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!chk) return;
     const svc = chk.getAttribute("data-service-check") || "";
     if (!svc) return;
+    if (blockedInfoForService(svc)) {
+      chk.checked = false;
+      return;
+    }
     if (chk.checked) selectedServiceSet.add(svc);
     else selectedServiceSet.delete(svc);
     updateSelectedServicesUi();
@@ -837,6 +931,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   Promise.all([loadServicePicker(), loadPeriodsView()])
+    .then(() => loadClosedServicesForCreatePeriod())
     .then(() => loadRunsView(null))
     .then(refreshSummary)
     .then(loadImportStatus)
