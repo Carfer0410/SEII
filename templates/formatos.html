@@ -1,52 +1,134 @@
 {% extends "base.html" %}
 {% set title = "Formatos" %}
-{% set subtitle = "Genera formatos operativos del proceso: A22 y Paz y Salvo por cambio de responsable." %}
+{% set subtitle = "Centro institucional de formatos: A22 y Paz y Salvo por cambio de responsable." %}
 
 {% block content %}
   <div class="stack module-screen">
-    <div class="card">
-      <h3>Formato A22</h3>
-      <div class="jour-block">
-        <p class="field-help">La generacion del A22 se mantiene en el modulo de Inventario y escaneo.</p>
-        <div class="row">
-          <button id="openA22ModuleBtn" type="button">Ir a Inventario y escaneo (A22)</button>
+    <div class="card report-hero reports-shell">
+      <div class="reports-shell-head">
+        <div>
+          <h3>Centro de formatos</h3>
+          <p>Selecciona el formato que necesitas y completa su flujo sin salir del modulo.</p>
         </div>
-        <div id="a22FormatStatus" class="status"></div>
+        <div class="reports-switcher" role="tablist" aria-label="Tipo de formato">
+          <button type="button" class="reports-tab active" id="tabA22Btn" data-format-tab="a22" role="tab" aria-selected="true">Formato A22</button>
+          <button type="button" class="reports-tab" id="tabClearanceBtn" data-format-tab="clearance" role="tab" aria-selected="false">Paz y salvo</button>
+        </div>
+      </div>
+      <div class="hero-badges">
+        <span class="badge">Formato institucional</span>
+        <span class="badge">Excel + PDF</span>
+        <span class="badge">Control documental</span>
       </div>
     </div>
 
-    <div class="card">
-      <h3>Paz y salvo por cambio de responsable</h3>
-      <div class="jour-block">
-        <div class="row">
-          <select id="formatPeriodSelect"><option value="">-- Selecciona periodo --</option></select>
-          <select id="formatRunSelect"><option value="">-- Selecciona jornada cerrada --</option></select>
-          <input id="formatDate" type="date" />
+    <section id="panelA22" class="report-panel active" role="tabpanel" aria-labelledby="tabA22Btn">
+      <div class="card">
+        <h3>Formulario A22</h3>
+        <div class="date-highlight">
+          <label>Fecha del A22 (opcional)</label>
+          <input id="reportDate" type="date" />
         </div>
-        <div class="row">
-          <div>
-            <label for="formatOutgoing">Responsable saliente</label>
-            <input id="formatOutgoing" list="formatResponsiblesList" placeholder="Busca y selecciona responsable" />
+        <div class="grid-2">
+          <div class="stack section-highlight">
+            <label>Periodo (obligatorio)</label>
+            <select id="reportPeriodSelect"><option value="">-- Selecciona periodo --</option></select>
           </div>
-          <div>
-            <label for="formatIncoming">Responsable entrante</label>
-            <input id="formatIncoming" list="formatResponsiblesList" placeholder="Busca y selecciona responsable" />
+          <div class="stack section-highlight">
+            <label>Jornada (obligatoria)</label>
+            <select id="reportRunSelect"><option value="">-- Selecciona jornada --</option></select>
           </div>
         </div>
-        <datalist id="formatResponsiblesList"></datalist>
-        <div class="row">
-          <input id="formatIssuedBy" placeholder="Quien emite certificacion" />
+        <div class="grid-2">
+          <div class="stack section-highlight">
+            <label>Servicio (automatico por jornada)</label>
+            <input id="reportServiceAuto" readonly placeholder="Se autocompleta con la jornada seleccionada" />
+          </div>
+          <div class="stack section-highlight">
+            <label>Responsable que recibe (opcional)</label>
+            <input id="reportReceiver" list="reportResponsiblesList" placeholder="Buscar por nombre o apellido" />
+            <datalist id="reportResponsiblesList"></datalist>
+            <small class="field-help">
+              Si lo dejas vacio, se toma el responsable registrado en la base para ese servicio.
+            </small>
+          </div>
         </div>
-        <label for="formatNotes">Observaciones (opcional)</label>
-        <textarea id="formatNotes" rows="3" placeholder="Notas del paz y salvo"></textarea>
-        <div class="row">
-          <button id="formatValidateBtn" type="button" class="mini-btn">Validar 100%</button>
-          <button id="formatGenerateBtn" type="button">Generar Paz y Salvo (PDF)</button>
+        <div class="stack section-highlight">
+          <label>Observacion general por defecto</label>
+          <input id="reportObservation" placeholder="Ejemplo: Inventario fisico realizado con equipo de activos fijos" />
         </div>
-        <div class="field-help">Solo se genera si la jornada cerrada tiene 100% de activos encontrados. El PDF se guarda automaticamente en Documentos.</div>
-        <div id="formatStatus" class="status"></div>
+        <div class="grid-2">
+          <div class="stack section-highlight">
+            <label>Lider de almacen (obligatorio)</label>
+            <input id="reportWarehouseLead" placeholder="Ejemplo: YUDI ELENA CAMBINDO MINA" required />
+          </div>
+          <div class="stack section-highlight">
+            <label>Responsable de activos fijos (obligatorio)</label>
+            <input id="reportAssetsManager" placeholder="Nombre del responsable de activos fijos" required />
+          </div>
+        </div>
+        <div class="row report-actions section-highlight actions-highlight">
+          <button id="refreshReportFiltersBtn" type="button">Actualizar filtros</button>
+          <button id="exportA22ExcelBtn" type="button">Descargar A22 Excel</button>
+          <button id="exportA22PdfBtn" type="button">Descargar A22 PDF</button>
+          <button id="refreshA22HistoryBtn" type="button">Actualizar historial A22</button>
+        </div>
+        <div id="reportStatus" class="status"></div>
       </div>
-    </div>
+
+      <div class="card">
+        <h3>Observaciones por activo (opcional)</h3>
+        <p class="field-help">Selecciona un servicio para cargar sus activos. Solo diligencia observacion en los codigos que lo requieran.</p>
+        <div class="row">
+          <input id="assetObsSearch" placeholder="Filtrar por codigo o descripcion" />
+        </div>
+        <div id="assetObsContainer"></div>
+      </div>
+
+      <div class="card">
+        <h3>Historial A22</h3>
+        <p class="field-help">Consulta y descarga actas A22 (Excel y PDF) generadas anteriormente.</p>
+        <div id="a22HistoryContainer"></div>
+      </div>
+    </section>
+
+    <section id="panelClearance" class="report-panel" role="tabpanel" aria-labelledby="tabClearanceBtn">
+      <div class="card">
+        <h3>Paz y salvo por cambio de responsable</h3>
+        <div class="jour-block">
+          <div class="row">
+            <select id="formatPeriodSelect"><option value="">-- Selecciona periodo --</option></select>
+            <select id="formatRunSelect"><option value="">-- Selecciona jornada cerrada --</option></select>
+            <input id="formatDate" type="date" />
+          </div>
+          <div class="row">
+            <div>
+              <label for="formatOutgoing">Responsable saliente</label>
+              <input id="formatOutgoing" list="formatResponsiblesList" placeholder="Busca y selecciona responsable" />
+            </div>
+            <div>
+              <label for="formatIncoming">Responsable entrante</label>
+              <input id="formatIncoming" list="formatResponsiblesList" placeholder="Busca y selecciona responsable" />
+            </div>
+          </div>
+          <datalist id="formatResponsiblesList"></datalist>
+          <div class="row">
+            <input id="formatIssuedBy" placeholder="Quien emite certificacion" />
+          </div>
+          <div class="clearance-notes-field">
+            <label for="formatNotes" class="clearance-notes-label">Observaciones (opcional)</label>
+            <textarea id="formatNotes" rows="4" placeholder="Describe aclaraciones del acta, contexto de entrega y compromisos de cierre."></textarea>
+            <small class="field-help clearance-notes-help">Redaccion recomendada: breve, concreta y orientada a trazabilidad.</small>
+          </div>
+          <div class="row">
+            <button id="formatValidateBtn" type="button" class="mini-btn">Validar 100%</button>
+            <button id="formatGenerateBtn" type="button">Generar Paz y Salvo (PDF)</button>
+          </div>
+          <div class="field-help">Solo se genera si la jornada cerrada tiene 100% de activos encontrados. El PDF se guarda automaticamente en Documentos.</div>
+          <div id="formatStatus" class="status"></div>
+        </div>
+      </div>
+    </section>
   </div>
 {% endblock %}
 

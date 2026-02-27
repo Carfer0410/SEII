@@ -1,98 +1,24 @@
 {% extends "base.html" %}
 {% set title = "Informes" %}
-{% set subtitle = "Centro institucional de reportes: genera A22 en Excel y PDF con control documental y trazabilidad." %}
+{% set subtitle = "Centro institucional de reportes contables: conciliacion mensual con trazabilidad e historial." %}
 
 {% block content %}
   <div class="stack module-screen">
     <div class="card report-hero reports-shell">
       <div class="reports-shell-head">
         <div>
-          <h3>Centro de informes</h3>
-          <p>Selecciona el tipo de informe para trabajar con un formulario limpio y enfocado.</p>
-        </div>
-        <div class="reports-switcher" role="tablist" aria-label="Tipo de informe">
-          <button type="button" class="reports-tab active" id="tabA22Btn" data-report-tab="a22" role="tab" aria-selected="true">A22</button>
-          <button type="button" class="reports-tab" id="tabAccountingBtn" data-report-tab="accounting" role="tab" aria-selected="false">Informe contable</button>
+          <h3>Informe contable</h3>
+          <p>Genera y consulta el informe de conciliacion contable mensual.</p>
         </div>
       </div>
       <div class="hero-badges">
-        <span class="badge">Formato institucional</span>
-        <span class="badge">Flujo por modulo</span>
-        <span class="badge">Excel + PDF</span>
+        <span class="badge">Conciliacion mensual</span>
+        <span class="badge">Historial</span>
+        <span class="badge">Excel oficial</span>
       </div>
     </div>
 
-    <section id="panelA22" class="report-panel active" role="tabpanel" aria-labelledby="tabA22Btn">
-      <div class="card">
-        <h3>Formulario A22</h3>
-        <div class="date-highlight">
-          <label>Fecha del A22 (opcional)</label>
-          <input id="reportDate" type="date" />
-        </div>
-        <div class="grid-2">
-          <div class="stack section-highlight">
-            <label>Periodo (obligatorio)</label>
-            <select id="reportPeriodSelect"><option value="">-- Selecciona periodo --</option></select>
-          </div>
-          <div class="stack section-highlight">
-            <label>Jornada (obligatoria)</label>
-            <select id="reportRunSelect"><option value="">-- Selecciona jornada --</option></select>
-          </div>
-        </div>
-        <div class="grid-2">
-          <div class="stack section-highlight">
-            <label>Servicio (automatico por jornada)</label>
-            <input id="reportServiceAuto" readonly placeholder="Se autocompleta con la jornada seleccionada" />
-          </div>
-          <div class="stack section-highlight">
-            <label>Responsable que recibe (opcional)</label>
-            <input id="reportReceiver" list="reportResponsiblesList" placeholder="Buscar por nombre o apellido" />
-            <datalist id="reportResponsiblesList"></datalist>
-            <small class="field-help">
-              Si lo dejas vacio, se toma el responsable registrado en la base para ese servicio.
-            </small>
-          </div>
-        </div>
-        <div class="stack section-highlight">
-          <label>Observacion general por defecto</label>
-          <input id="reportObservation" placeholder="Ejemplo: Inventario fisico realizado con equipo de activos fijos" />
-        </div>
-        <div class="grid-2">
-          <div class="stack section-highlight">
-            <label>Lider de almacen (obligatorio)</label>
-            <input id="reportWarehouseLead" placeholder="Ejemplo: YUDI ELENA CAMBINDO MINA" required />
-          </div>
-          <div class="stack section-highlight">
-            <label>Responsable de activos fijos (obligatorio)</label>
-            <input id="reportAssetsManager" placeholder="Nombre del responsable de activos fijos" required />
-          </div>
-        </div>
-        <div class="row report-actions section-highlight actions-highlight">
-          <button id="refreshReportFiltersBtn" type="button">Actualizar filtros</button>
-          <button id="exportA22ExcelBtn" type="button">Descargar A22 Excel</button>
-          <button id="exportA22PdfBtn" type="button">Descargar A22 PDF</button>
-          <button id="refreshA22HistoryBtn" type="button">Actualizar historial A22</button>
-        </div>
-        <div id="reportStatus" class="status"></div>
-      </div>
-
-      <div class="card">
-        <h3>Observaciones por activo (opcional)</h3>
-        <p class="field-help">Selecciona un servicio para cargar sus activos. Solo diligencia observacion en los codigos que lo requieran.</p>
-        <div class="row">
-          <input id="assetObsSearch" placeholder="Filtrar por codigo o descripcion" />
-        </div>
-        <div id="assetObsContainer"></div>
-      </div>
-
-      <div class="card">
-        <h3>Historial A22</h3>
-        <p class="field-help">Consulta y descarga actas A22 (Excel y PDF) generadas anteriormente.</p>
-        <div id="a22HistoryContainer"></div>
-      </div>
-    </section>
-
-    <section id="panelAccounting" class="report-panel" role="tabpanel" aria-labelledby="tabAccountingBtn">
+    <section id="panelAccounting" class="report-panel active">
       <div class="card">
         <h3>Informe contable mensual</h3>
         <p class="field-help">Genera el archivo oficial de conciliacion con base completa, desglose por familias e informe consolidado.</p>

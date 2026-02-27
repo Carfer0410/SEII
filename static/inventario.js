@@ -343,7 +343,7 @@ document.addEventListener('DOMContentLoaded', () => {
       },
       {
         title: 'Reportes operativos',
-        desc: 'Exporta reportes operativos del contexto activo. Para A22 y reportes formales usa Informes.',
+        desc: 'Exporta reportes operativos del contexto activo. Para A22 y paz y salvo usa Formatos; para conciliacion usa Informes.',
         selector: '.inv-screen .card:nth-of-type(6)',
       },
     ];
