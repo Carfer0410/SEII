@@ -1161,6 +1161,12 @@ def jornadas_page():
     return render_template('jornadas.html')
 
 
+@app.route('/formatos')
+def formatos_page():
+    ensure_db()
+    return render_template('formatos.html')
+
+
 @app.route('/bajas')
 def bajas_page():
     ensure_db()
@@ -2811,7 +2817,37 @@ def services():
 @app.route('/responsibles')
 def responsibles():
     ensure_db()
-    raw = db.session.query(Asset.nom_resp).all()
+    scoped = str(request.args.get('scoped') or '').strip().lower() in {'1', 'true', 'si', 'yes'}
+    period_id = request.args.get('period_id', type=int)
+    run_id = request.args.get('run_id', type=int)
+    service = (request.args.get('service') or '').strip()
+
+    q = Asset.query
+    if scoped:
+        run = None
+        if run_id:
+            run = InventoryRun.query.get(run_id)
+            if not run:
+                return jsonify({'error': 'Jornada no encontrada'}), 404
+            if period_id and run.period_id != period_id:
+                return jsonify({'error': 'La jornada no pertenece al periodo seleccionado'}), 400
+        if run:
+            q = apply_run_scope_filter(q, run)
+        elif period_id:
+            runs = InventoryRun.query.filter(InventoryRun.period_id == period_id).all()
+            scope_services = set()
+            for r in runs:
+                for s in run_scope_services(r):
+                    s_clean = str(s or '').strip()
+                    if s_clean:
+                        scope_services.add(s_clean)
+            if scope_services:
+                q = q.filter(Asset.nom_ccos.in_(sorted(scope_services)))
+
+    if scoped and service:
+        q = q.filter(Asset.nom_ccos == service)
+
+    raw = q.with_entities(Asset.nom_resp).all()
     cleaned = set()
     for row in raw:
         value = row[0]
@@ -5562,6 +5598,295 @@ def run_summary(run_id):
             'pending': pending,
         }
     })
+
+
+def build_run_coverage_summary(run):
+    q = apply_run_scope_filter(Asset.query, run)
+    assets_scope = q.order_by(Asset.c_act.asc()).all()
+    asset_ids = [a.id for a in assets_scope]
+    total = len(asset_ids)
+    found = 0
+    not_found = 0
+    if asset_ids:
+        statuses = RunAssetStatus.query.filter(
+            RunAssetStatus.run_id == run.id,
+            RunAssetStatus.asset_id.in_(asset_ids),
+        ).all()
+        for st in statuses:
+            if st.status == 'Encontrado':
+                found += 1
+            elif st.status == 'No encontrado':
+                not_found += 1
+    pending = max(total - found - not_found, 0)
+    missing = max(total - found, 0)
+    found_pct = round((found / total) * 100.0, 2) if total > 0 else 0.0
+    return {
+        'total': total,
+        'found': found,
+        'not_found': not_found,
+        'pending': pending,
+        'missing': missing,
+        'found_pct': found_pct,
+        'assets_scope': assets_scope,
+    }
+
+
+def build_clearance_validation(period_id, run_id):
+    period = InventoryPeriod.query.get(period_id)
+    if not period:
+        return None, None, None, None, (jsonify({'error': 'Periodo no encontrado'}), 404)
+    run = InventoryRun.query.get(run_id)
+    if not run:
+        return None, None, None, None, (jsonify({'error': 'Jornada no encontrada'}), 404)
+    if run.period_id != period.id:
+        return None, None, None, None, (jsonify({'error': 'La jornada no pertenece al periodo seleccionado'}), 400)
+    if run.status != 'closed':
+        return None, None, None, None, (jsonify({'error': 'Solo puedes generar paz y salvo con jornadas cerradas'}), 400)
+
+    summary = build_run_coverage_summary(run)
+    if summary['total'] <= 0:
+        return None, None, None, None, (jsonify({'error': 'La jornada no tiene activos en alcance para emitir paz y salvo'}), 400)
+
+    allowed = summary['found'] == summary['total']
+    if allowed:
+        reason = 'Cumplimiento 100%: todos los activos del alcance fueron encontrados.'
+    else:
+        reason = (
+            f'No se puede generar paz y salvo. Faltan {summary["missing"]} activos para completar el 100%. '
+            f'No encontrados: {summary["not_found"]}. Pendientes: {summary["pending"]}.'
+        )
+    return period, run, summary, {'allowed': allowed, 'message': reason}, None
+
+
+@app.route('/paz_y_salvo/validate', methods=['GET'])
+def validate_paz_y_salvo():
+    ensure_db()
+    period_id = request.args.get('period_id', type=int)
+    run_id = request.args.get('run_id', type=int)
+    if not period_id:
+        return jsonify({'error': 'Debes seleccionar el periodo para validar paz y salvo'}), 400
+    if not run_id:
+        return jsonify({'error': 'Debes seleccionar la jornada para validar paz y salvo'}), 400
+
+    period, run, summary, validation, err = build_clearance_validation(period_id, run_id)
+    if err:
+        return err
+    return jsonify({
+        'period': period.to_dict(),
+        'run': run.to_dict(),
+        'summary': {
+            'total': summary['total'],
+            'found': summary['found'],
+            'not_found': summary['not_found'],
+            'pending': summary['pending'],
+            'missing': summary['missing'],
+            'found_pct': summary['found_pct'],
+        },
+        'allowed': validation['allowed'],
+        'message': validation['message'],
+    })
+
+
+@app.route('/paz_y_salvo/generate', methods=['POST'])
+def generate_paz_y_salvo_pdf():
+    ensure_db()
+    data = request.get_json() or {}
+    period_id = data.get('period_id')
+    run_id = data.get('run_id')
+    try:
+        period_id = int(period_id) if period_id not in (None, '') else None
+    except Exception:
+        period_id = None
+    try:
+        run_id = int(run_id) if run_id not in (None, '') else None
+    except Exception:
+        run_id = None
+    if not period_id:
+        return jsonify({'error': 'Debes seleccionar el periodo para generar paz y salvo'}), 400
+    if not run_id:
+        return jsonify({'error': 'Debes seleccionar la jornada para generar paz y salvo'}), 400
+
+    outgoing_responsible = (data.get('outgoing_responsible') or '').strip()
+    incoming_responsible = (data.get('incoming_responsible') or '').strip()
+    issued_by = (data.get('issued_by') or '').strip() or 'Responsable activos fijos'
+    observations = (data.get('observations') or '').strip()
+    report_date = (data.get('report_date') or '').strip()
+    if report_date:
+        try:
+            datetime.strptime(report_date, '%Y-%m-%d')
+        except Exception:
+            return jsonify({'error': 'Fecha invalida. Usa formato YYYY-MM-DD'}), 400
+    selected_date = report_date or now_local_dt().strftime('%Y-%m-%d')
+
+    if not outgoing_responsible:
+        return jsonify({'error': 'Debes indicar el responsable saliente'}), 400
+    if not incoming_responsible:
+        return jsonify({'error': 'Debes indicar el responsable entrante'}), 400
+
+    period, run, summary, validation, err = build_clearance_validation(period_id, run_id)
+    if err:
+        return err
+    if not validation['allowed']:
+        return jsonify({
+            'error': validation['message'],
+            'summary': {
+                'total': summary['total'],
+                'found': summary['found'],
+                'not_found': summary['not_found'],
+                'pending': summary['pending'],
+                'missing': summary['missing'],
+                'found_pct': summary['found_pct'],
+            }
+        }), 400
+
+    assets_scope = summary['assets_scope']
+    services = run_scope_services(run)
+    services_label = ', '.join(services) if services else (run.service or '')
+    out = BytesIO()
+    doc = SimpleDocTemplate(
+        out,
+        pagesize=letter,
+        leftMargin=16 * mm,
+        rightMargin=16 * mm,
+        topMargin=22 * mm,
+        bottomMargin=12 * mm,
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'pys_title',
+        parent=styles['Heading2'],
+        fontName='Helvetica-Bold',
+        fontSize=13,
+        textColor=colors.HexColor('#0B4F6C'),
+    )
+    normal = ParagraphStyle('pys_normal', parent=styles['Normal'], fontSize=8.2, leading=10)
+    centered = ParagraphStyle('pys_centered', parent=normal, alignment=1)
+
+    story = []
+    story.append(Paragraph('PAZ Y SALVO DE ACTIVOS FIJOS', title_style))
+    story.append(Spacer(1, 5))
+    meta = [
+        [Paragraph('<b>Periodo</b>', normal), Paragraph(period.name or f'Periodo {period.id}', normal)],
+        [Paragraph('<b>Jornada</b>', normal), Paragraph(run.name or f'Jornada {run.id}', normal)],
+        [Paragraph('<b>Servicio(s)</b>', normal), Paragraph(services_label or 'N/D', normal)],
+        [Paragraph('<b>Fecha emision</b>', normal), Paragraph(selected_date, normal)],
+        [Paragraph('<b>Responsable saliente</b>', normal), Paragraph(outgoing_responsible, normal)],
+        [Paragraph('<b>Responsable entrante</b>', normal), Paragraph(incoming_responsible, normal)],
+        [Paragraph('<b>Total activos en alcance</b>', normal), Paragraph(str(summary['total']), normal)],
+        [Paragraph('<b>Total activos encontrados</b>', normal), Paragraph(str(summary['found']), normal)],
+        [Paragraph('<b>Cumplimiento</b>', normal), Paragraph(f"{summary['found_pct']}%", normal)],
+    ]
+    meta_table = Table(meta, colWidths=[54 * mm, 124 * mm])
+    meta_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#EAF4FA')),
+        ('BOX', (0, 0), (-1, -1), 0.6, colors.HexColor('#BFD5E3')),
+        ('INNERGRID', (0, 0), (-1, -1), 0.35, colors.HexColor('#D7E5EE')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    story.append(meta_table)
+    story.append(Spacer(1, 8))
+    statement = (
+        f'Se certifica que la jornada "{run.name}" del periodo "{period.name}" '
+        f'alcanzó cumplimiento del 100% en inventario de activos fijos. '
+        f'En consecuencia, se emite paz y salvo para el cambio de responsable '
+        f'del servicio {services_label or "N/D"}.'
+    )
+    story.append(Paragraph(statement, normal))
+    if observations:
+        story.append(Spacer(1, 4))
+        story.append(Paragraph(f"<b>Observaciones:</b> {escape(observations)}", normal))
+    story.append(Spacer(1, 7))
+
+    rows = [[
+        Paragraph('<b>N</b>', normal),
+        Paragraph('<b>COD ACTIVO</b>', normal),
+        Paragraph('<b>DESCRIPCION</b>', normal),
+        Paragraph('<b>SERVICIO</b>', normal),
+        Paragraph('<b>UBICACION</b>', normal),
+    ]]
+    for i, asset in enumerate(assets_scope, start=1):
+        rows.append([
+            Paragraph(str(i), normal),
+            Paragraph(str(asset.c_act or ''), normal),
+            Paragraph(str(asset.nom or ''), normal),
+            Paragraph(str(asset.nom_ccos or ''), normal),
+            Paragraph(str(asset.des_ubi or ''), normal),
+        ])
+    assets_table = Table(
+        rows,
+        colWidths=[10 * mm, 24 * mm, 64 * mm, 42 * mm, 38 * mm],
+        repeatRows=1,
+    )
+    assets_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0B4F6C')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('BOX', (0, 0), (-1, -1), 0.6, colors.HexColor('#BFD5E3')),
+        ('INNERGRID', (0, 0), (-1, -1), 0.35, colors.HexColor('#D7E5EE')),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F7FBFD')]),
+    ]))
+    story.append(assets_table)
+    story.append(Spacer(1, 18))
+
+    signatures = Table([
+        [
+            Paragraph('__________________________', centered),
+            Paragraph('__________________________', centered),
+            Paragraph('__________________________', centered),
+        ],
+        [
+            Paragraph(outgoing_responsible, centered),
+            Paragraph(incoming_responsible, centered),
+            Paragraph(issued_by, centered),
+        ],
+        [
+            Paragraph('RESPONSABLE SALIENTE', centered),
+            Paragraph('RESPONSABLE ENTRANTE', centered),
+            Paragraph('EMITE CERTIFICACION', centered),
+        ],
+    ], colWidths=[58 * mm, 58 * mm, 58 * mm])
+    signatures.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+    ]))
+    story.append(signatures)
+
+    page_header = make_pdf_page_header(get_hospital_logo_path())
+    doc.build(story, onFirstPage=page_header, onLaterPages=page_header)
+    content = out.getvalue()
+
+    timestamp = now_local_dt().strftime('%Y%m%d%H%M%S')
+    public_name = clean_filename(
+        f"paz_y_salvo_{period.name}_{run.name}_{selected_date}.pdf"
+    )
+    storage_name = f"{clean_filename(os.path.splitext(public_name)[0])}_{timestamp}.pdf"
+    file_path = os.path.join(DOCUMENTS_DIR, storage_name)
+    with open(file_path, 'wb') as fp:
+        fp.write(content)
+
+    doc_row = DocumentRecord(
+        link_type='general',
+        document_type='Certificacion',
+        title=f'Paz y salvo activos fijos - {run.name}',
+        description=(
+            f'Paz y salvo por cambio de responsable. '
+            f'Periodo: {period.name}. Jornada: {run.name}. Cumplimiento: 100%.'
+        ),
+        doc_date=selected_date,
+        area_service=services_label or (run.service or ''),
+        radicado=f'PYS-{period.id}-{run.id}-{timestamp}',
+        file_name=public_name,
+        file_path=file_path,
+        file_ext='.pdf',
+        file_size=len(content),
+        uploaded_by=issued_by,
+        uploaded_at=now_iso(),
+        status='active',
+    )
+    db.session.add(doc_row)
+    db.session.commit()
+
+    return send_file(BytesIO(content), download_name=public_name, as_attachment=True, mimetype='application/pdf')
 
 
 @app.route('/runs/<int:run_id>/close', methods=['POST'])

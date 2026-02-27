@@ -21,6 +21,7 @@
       <nav class="menu menu-top" aria-label="Navegacion principal">
         <a class="{{ 'active' if request.path == '/' else '' }}" href="{{ url_for('index') }}">Inicio</a>
         <a class="{{ 'active' if request.path == '/jornadas' else '' }}" href="{{ url_for('jornadas_page') }}">Jornadas</a>
+        <a class="{{ 'active' if request.path == '/formatos' else '' }}" href="{{ url_for('formatos_page') }}">Formatos</a>
         <a class="{{ 'active' if request.path == '/cronograma' else '' }}" href="{{ url_for('cronograma_page') }}">Cronograma</a>
         <a class="{{ 'active' if request.path == '/inventario' else '' }}" href="{{ url_for('inventario_page') }}">Inventario y escaneo</a>
         <a class="{{ 'active' if request.path == '/bajas' else '' }}" href="{{ url_for('bajas_page') }}">Bajas</a>

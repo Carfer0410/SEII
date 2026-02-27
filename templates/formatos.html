@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% set title = "Formatos" %}
+{% set subtitle = "Genera formatos operativos del proceso: A22 y Paz y Salvo por cambio de responsable." %}
+
+{% block content %}
+  <div class="stack module-screen">
+    <div class="card">
+      <h3>Formato A22</h3>
+      <div class="jour-block">
+        <p class="field-help">La generacion del A22 se mantiene en el modulo de Inventario y escaneo.</p>
+        <div class="row">
+          <button id="openA22ModuleBtn" type="button">Ir a Inventario y escaneo (A22)</button>
+        </div>
+        <div id="a22FormatStatus" class="status"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Paz y salvo por cambio de responsable</h3>
+      <div class="jour-block">
+        <div class="row">
+          <select id="formatPeriodSelect"><option value="">-- Selecciona periodo --</option></select>
+          <select id="formatRunSelect"><option value="">-- Selecciona jornada cerrada --</option></select>
+          <input id="formatDate" type="date" />
+        </div>
+        <div class="row">
+          <div>
+            <label for="formatOutgoing">Responsable saliente</label>
+            <input id="formatOutgoing" list="formatResponsiblesList" placeholder="Busca y selecciona responsable" />
+          </div>
+          <div>
+            <label for="formatIncoming">Responsable entrante</label>
+            <input id="formatIncoming" list="formatResponsiblesList" placeholder="Busca y selecciona responsable" />
+          </div>
+        </div>
+        <datalist id="formatResponsiblesList"></datalist>
+        <div class="row">
+          <input id="formatIssuedBy" placeholder="Quien emite certificacion" />
+        </div>
+        <label for="formatNotes">Observaciones (opcional)</label>
+        <textarea id="formatNotes" rows="3" placeholder="Notas del paz y salvo"></textarea>
+        <div class="row">
+          <button id="formatValidateBtn" type="button" class="mini-btn">Validar 100%</button>
+          <button id="formatGenerateBtn" type="button">Generar Paz y Salvo (PDF)</button>
+        </div>
+        <div class="field-help">Solo se genera si la jornada cerrada tiene 100% de activos encontrados. El PDF se guarda automaticamente en Documentos.</div>
+        <div id="formatStatus" class="status"></div>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='formatos.js') }}"></script>
+{% endblock %}

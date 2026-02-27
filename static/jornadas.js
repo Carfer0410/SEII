@@ -27,10 +27,22 @@ document.addEventListener("DOMContentLoaded", () => {
   const refreshRunsBtn = document.getElementById("refreshRunsBtn");
   const closeRunBtn = document.getElementById("closeRunBtn");
   const cancelRunBtn = document.getElementById("cancelRunBtn");
+  const quickA22Btn = document.getElementById("quickA22Btn");
+  const quickClearanceBtn = document.getElementById("quickClearanceBtn");
   const runSummary = document.getElementById("runSummary");
   const closedRunsContainer = document.getElementById("closedRunsContainer");
   const statusEl = document.getElementById("scanStatus");
   const closedRunsMeta = document.getElementById("closedRunsMeta");
+  const clearanceSection = document.getElementById("clearanceSection");
+  const clearanceRunSelect = document.getElementById("clearanceRunSelect");
+  const clearanceDate = document.getElementById("clearanceDate");
+  const clearanceOutgoing = document.getElementById("clearanceOutgoing");
+  const clearanceIncoming = document.getElementById("clearanceIncoming");
+  const clearanceIssuedBy = document.getElementById("clearanceIssuedBy");
+  const clearanceNotes = document.getElementById("clearanceNotes");
+  const validateClearanceBtn = document.getElementById("validateClearanceBtn");
+  const generateClearanceBtn = document.getElementById("generateClearanceBtn");
+  const clearanceStatus = document.getElementById("clearanceStatus");
 
   let cachedRuns = [];
   let cachedPeriods = [];
@@ -432,6 +444,35 @@ document.addEventListener("DOMContentLoaded", () => {
     return runSelect.value ? Number(runSelect.value) : null;
   }
 
+  function selectedClearanceRunId() {
+    return clearanceRunSelect?.value ? Number(clearanceRunSelect.value) : null;
+  }
+
+  function renderClearanceRuns(preferredRunId = null) {
+    if (!clearanceRunSelect) return;
+    const closed = cachedRuns.filter(
+      (r) => String(r.status || "").toLowerCase() === "closed",
+    );
+    clearanceRunSelect.innerHTML =
+      '<option value="">-- Selecciona jornada cerrada --</option>' +
+      closed
+        .map((r) => {
+          const svc =
+            r.service_scope_label || r.service
+              ? ` [${App.escapeHtml(r.service_scope_label || r.service)}]`
+              : "";
+          const metrics = ` E:${Number(r.found || 0)} / NE:${Number(r.not_found || 0)}`;
+          return `<option value="${r.id}">${r.id} - ${App.escapeHtml(r.name)}${svc} |${metrics}</option>`;
+        })
+        .join("");
+    if (
+      preferredRunId &&
+      closed.some((r) => Number(r.id) === Number(preferredRunId))
+    ) {
+      clearanceRunSelect.value = String(preferredRunId);
+    }
+  }
+
   function renderClosedRunsTable(rows) {
     if (!rows.length)
       return '<div class="empty-mini">No hay jornadas en historial.</div>';
@@ -529,6 +570,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!pid) {
       cachedRuns = [];
       runSelect.innerHTML = '<option value="">-- Sin jornada activa --</option>';
+      if (clearanceRunSelect) {
+        clearanceRunSelect.innerHTML = '<option value="">-- Selecciona jornada cerrada --</option>';
+      }
       closedRunsContainer.innerHTML = '<div class="empty-mini">Selecciona un periodo para consultar jornadas.</div>';
       if (closedRunsMeta) {
         closedRunsMeta.textContent = 'Sin periodo seleccionado.';
@@ -565,6 +609,7 @@ document.addEventListener("DOMContentLoaded", () => {
       runSelect.value = String(active[0].id);
     }
 
+    renderClearanceRuns(preferredRunId);
     closedRunsContainer.innerHTML = renderClosedRunsTable(closed);
     if (closedRunsMeta) {
       const totalFound = closed.reduce(
@@ -820,7 +865,7 @@ document.addEventListener("DOMContentLoaded", () => {
         user: "usuario_movil",
       });
       await loadClosedServicesForCreatePeriod();
-      await loadRunsView(null);
+      await loadRunsView(data.run.id);
       await refreshSummary();
       // Modal de éxito reutilizando el estilo de confirmación
       await showConfirmModal({
@@ -929,6 +974,113 @@ document.addEventListener("DOMContentLoaded", () => {
     const closed = cachedRuns.filter((r) => r.status !== "active");
     closedRunsContainer.innerHTML = renderClosedRunsTable(closed);
   });
+
+  quickClearanceBtn?.addEventListener("click", () => {
+    clearanceSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+    App.setStatus(
+      statusEl,
+      "Seccion Paz y salvo visible. Completa los datos y genera el PDF.",
+    );
+  });
+
+  quickA22Btn?.addEventListener("click", () => {
+    window.location.href = "/inventario";
+  });
+
+  validateClearanceBtn?.addEventListener("click", async () => {
+    const pid = selectedPeriodId();
+    const runId = selectedClearanceRunId();
+    if (!pid) return App.setStatus(clearanceStatus, "Selecciona un periodo", true);
+    if (!runId)
+      return App.setStatus(
+        clearanceStatus,
+        "Selecciona una jornada cerrada para validar",
+        true,
+      );
+    try {
+      const data = await App.get(
+        `/paz_y_salvo/validate?period_id=${encodeURIComponent(String(pid))}&run_id=${encodeURIComponent(String(runId))}`,
+      );
+      App.setStatus(clearanceStatus, data.message || "", !data.allowed);
+      if (!data.allowed) {
+        await showBlockingModal(
+          data.message || "No cumple condiciones",
+          "Paz y salvo bloqueado",
+        );
+      }
+    } catch (err) {
+      App.setStatus(clearanceStatus, err.message, true);
+    }
+  });
+
+  generateClearanceBtn?.addEventListener("click", async () => {
+    const pid = selectedPeriodId();
+    const runId = selectedClearanceRunId();
+    if (!pid) return App.setStatus(clearanceStatus, "Selecciona un periodo", true);
+    if (!runId)
+      return App.setStatus(
+        clearanceStatus,
+        "Selecciona una jornada cerrada para generar paz y salvo",
+        true,
+      );
+
+    const outgoing = String(clearanceOutgoing?.value || "").trim();
+    const incoming = String(clearanceIncoming?.value || "").trim();
+    const issuedBy = String(clearanceIssuedBy?.value || "").trim();
+    const reportDate = String(clearanceDate?.value || "").trim();
+    const observations = String(clearanceNotes?.value || "").trim();
+    if (!outgoing)
+      return App.setStatus(clearanceStatus, "Debes indicar responsable saliente", true);
+    if (!incoming)
+      return App.setStatus(clearanceStatus, "Debes indicar responsable entrante", true);
+
+    try {
+      App.setStatus(clearanceStatus, "Generando paz y salvo...");
+      const res = await fetch("/paz_y_salvo/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          period_id: pid,
+          run_id: runId,
+          outgoing_responsible: outgoing,
+          incoming_responsible: incoming,
+          issued_by: issuedBy,
+          report_date: reportDate,
+          observations,
+        }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload.error || `Error HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const header = String(res.headers.get("Content-Disposition") || "");
+      const match = header.match(/filename=\"?([^\";]+)\"?/i);
+      const filename = match?.[1] || "paz_y_salvo.pdf";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      App.setStatus(
+        clearanceStatus,
+        "Paz y salvo generado. El PDF fue descargado y guardado en Documentos.",
+      );
+    } catch (err) {
+      App.setStatus(clearanceStatus, err.message, true);
+      await showBlockingModal(err.message, "No se pudo generar paz y salvo");
+    }
+  });
+
+  if (clearanceDate && !clearanceDate.value) {
+    clearanceDate.value = new Date().toISOString().slice(0, 10);
+  }
+  if (clearanceIssuedBy && !clearanceIssuedBy.value) {
+    clearanceIssuedBy.value = "Responsable activos fijos";
+  }
 
   Promise.all([loadServicePicker(), loadPeriodsView()])
     .then(() => loadClosedServicesForCreatePeriod())
