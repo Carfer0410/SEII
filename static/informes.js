@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const accountingBaseStatusEl = document.getElementById('accountingBaseStatus');
   const accountingBasesContainer = document.getElementById('accountingBasesContainer');
   const accountingOverridesSummaryContainer = document.getElementById('accountingOverridesSummaryContainer');
+  const accountingActiveBaseInfo = document.getElementById('accountingActiveBaseInfo');
 
   const HISTORY_PAGE_SIZE = 10;
   const BASES_PAGE_SIZE = 8;
@@ -117,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderBasesTable(rows) {
     if (!accountingBasesContainer) return;
     if (!rows.length) {
-      accountingBasesContainer.innerHTML = '<div class="empty-mini">No hay bases mensuales cargadas para el periodo seleccionado.</div>';
+      accountingBasesContainer.innerHTML = '<div class="empty-mini">No hay bases mensuales cargadas.</div>';
       return;
     }
     const pageData = pagedRows(rows, basesPage, BASES_PAGE_SIZE);
@@ -211,13 +212,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadAccountingBases() {
     if (!accountingBasesContainer) return;
-    const qp = accountingBasePeriodParams();
-    const params = new URLSearchParams();
-    if (qp.month) params.set('month', String(qp.month));
-    if (qp.year) params.set('year', String(qp.year));
-    const data = await App.get('/reports/accounting_monthly_bases' + (params.toString() ? `?${params.toString()}` : ''));
+    const data = await App.get('/reports/accounting_monthly_bases');
     lastBaseRows = data.items || [];
     renderBasesTable(lastBaseRows);
+  }
+
+  async function loadActiveAccountingBaseInfo() {
+    if (!accountingActiveBaseInfo) return;
+    const qp = accountingPeriodParams();
+    if (!qp.month || !qp.year) {
+      accountingActiveBaseInfo.innerHTML = '<div class="import-current-base-empty">Selecciona mes y año para visualizar la base activa.</div>';
+      return;
+    }
+    try {
+      const params = new URLSearchParams({ month: String(qp.month), year: String(qp.year) });
+      const data = await App.get('/reports/accounting_monthly_bases?' + params.toString());
+      const active = (data.items || [])[0];
+      if (!active) {
+        accountingActiveBaseInfo.innerHTML = '<div class="import-current-base-empty">No hay base activa cargada para este periodo.</div>';
+        return;
+      }
+      accountingActiveBaseInfo.innerHTML = `
+        <div class="import-current-base-card">
+          <div class="import-current-base-title">Base activa del periodo</div>
+          <div class="import-current-base-meta">
+            <strong>${App.escapeHtml(active.period_label || '')}</strong><br/>
+            Archivo: <strong>${App.escapeHtml(active.source_file_name || '')}</strong><br/>
+            Cargada: <strong>${App.escapeHtml(App.formatDateTime(active.uploaded_at_local || active.uploaded_at || ''))}</strong><br/>
+            Usuario: <strong>${App.escapeHtml(active.uploaded_by || '-')}</strong> · Activos: <strong>${App.escapeHtml(String(active.asset_count || 0))}</strong>
+          </div>
+        </div>
+      `;
+    } catch (err) {
+      accountingActiveBaseInfo.innerHTML = '<div class="import-current-base-empty">No fue posible consultar la base activa del periodo.</div>';
+    }
   }
 
   async function loadOverridesSummary() {
@@ -260,6 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
       App.setStatus(accountingBaseStatusEl, `Base mensual cargada. Activos: ${payload.base?.asset_count || 0}`);
       accountingBaseFileInput.value = '';
       await loadAccountingBases();
+      await loadActiveAccountingBaseInfo();
       await loadOverridesSummary();
     } catch (err) {
       App.setStatus(accountingBaseStatusEl, err.message, true);
@@ -317,7 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadAccountingHistory().catch((err) => App.setStatus(accountingStatusEl, err.message, true));
   });
   refreshAccountingBasesBtn?.addEventListener('click', () => {
-    loadAccountingBases().catch((err) => App.setStatus(accountingBaseStatusEl, err.message, true));
+    Promise.all([loadAccountingBases(), loadActiveAccountingBaseInfo()]).catch((err) => App.setStatus(accountingBaseStatusEl, err.message, true));
   });
   refreshOverridesSummaryBtn?.addEventListener('click', () => {
     loadOverridesSummary().catch((err) => App.setStatus(accountingBaseStatusEl, err.message, true));
@@ -358,10 +387,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   accountingMonthInput?.addEventListener('change', () => {
     syncBasePeriodWithReport();
+    loadActiveAccountingBaseInfo().catch((err) => App.setStatus(accountingBaseStatusEl, err.message, true));
     loadOverridesSummary().catch((err) => App.setStatus(accountingBaseStatusEl, err.message, true));
   });
   accountingYearInput?.addEventListener('change', () => {
     syncBasePeriodWithReport();
+    loadActiveAccountingBaseInfo().catch((err) => App.setStatus(accountingBaseStatusEl, err.message, true));
     loadOverridesSummary().catch((err) => App.setStatus(accountingBaseStatusEl, err.message, true));
   });
   accountingBaseMonthInput?.addEventListener('change', () => {
@@ -373,5 +404,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   loadAccountingHistory().catch((err) => App.setStatus(accountingStatusEl, err.message, true));
   loadAccountingBases().catch((err) => App.setStatus(accountingBaseStatusEl, err.message, true));
+  loadActiveAccountingBaseInfo().catch((err) => App.setStatus(accountingBaseStatusEl, err.message, true));
   loadOverridesSummary().catch((err) => App.setStatus(accountingBaseStatusEl, err.message, true));
 });
