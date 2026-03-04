@@ -287,21 +287,22 @@ def format_dt_local(value, fmt='%Y-%m-%d %H:%M'):
     if not dt:
         return ''
     return dt.strftime(fmt)
-ACCOUNTING_REPORT_ALGO_VERSION = 14
+ACCOUNTING_REPORT_ALGO_VERSION = 17
 ACCOUNTING_EXCLUDED_FAMILIES = {'1114001', '4619001'}
 STRICT_ACCOUNTING_VALIDATION = True
-# Costos fijos mensuales definidos por el auxiliar de activos fijos (reemplazo mes a mes).
-# Clave: C_ACT del activo (str), Valor: costo a aplicar en el informe (float).
+# Costos fijos definidos por contabilidad (reemplazo manual por C_ACT).
+# Este diccionario aplica igual para todos los meses.
 ACCOUNTING_COST_OVERRIDES = {
     '4978':  Decimal('3326296.00'),
     '6449': Decimal('11424000.33'),
     '6450': Decimal('11424000.33'),
     '6451': Decimal('11424000.33'),
-    '6478':  Decimal('1062072.61'),
+    '6478':  Decimal('1062077.61'),
     '6575':  Decimal('1945569.12'),
     '6690':  Decimal('1903999.20'),
     '6925':  Decimal('297192.00'),
     '5140':  Decimal('1043997.72'),
+    '5570':  Decimal('1411934.73'),
     '3681':  Decimal('3363478.00'),
     '2638':  Decimal('803333.41'),
 }
@@ -1472,7 +1473,8 @@ def export_pdf():
 
 def try_float(x):
     try:
-        return float(x)
+        d = to_decimal_amount(x, default=None)
+        return float(d) if d is not None else None
     except Exception:
         return None
 
@@ -1673,6 +1675,58 @@ def to_number(value):
         return float(value)
     except Exception:
         return 0.0
+
+
+def to_decimal_amount(value, default=Decimal('0')):
+    if value is None:
+        return default
+    if isinstance(value, Decimal):
+        return value
+    if isinstance(value, (int, float)):
+        try:
+            return Decimal(str(value))
+        except Exception:
+            return default
+    txt = str(value).strip()
+    if not txt:
+        return default
+    txt = txt.replace('$', '').replace(' ', '')
+    if ',' in txt and '.' in txt:
+        if txt.rfind(',') > txt.rfind('.'):
+            txt = txt.replace('.', '').replace(',', '.')
+        else:
+            txt = txt.replace(',', '')
+    elif ',' in txt:
+        txt = txt.replace('.', '').replace(',', '.')
+    try:
+        return Decimal(txt)
+    except Exception:
+        return default
+
+
+def normalize_override_asset_code(value):
+    raw = str(value or '').strip()
+    if not raw:
+        return ''
+    if raw.isdigit():
+        return raw
+    compact = raw.replace(',', '')
+    try:
+        dec = Decimal(compact)
+        if dec == dec.to_integral_value():
+            return str(dec.quantize(Decimal('1')))
+    except Exception:
+        pass
+    return raw
+
+
+def get_accounting_cost_overrides(month=None, year=None):
+    return dict(ACCOUNTING_COST_OVERRIDES)
+
+
+def accounting_overrides_signature(overrides):
+    parts = [f'{k}:{overrides[k]}' for k in sorted(overrides.keys())]
+    return '|'.join(parts)
 
 
 def asset_book_value(asset):
@@ -7362,11 +7416,13 @@ def report_accounting_monthly_excel():
     month, year = normalize_month_year(request.args.get('month'), request.args.get('year'))
     month_label = MONTH_LABELS_ES.get(month, str(month))
     period_label = f'{month_label} {year}'
+    selected_overrides = get_accounting_cost_overrides(month, year)
+    overrides_signature = accounting_overrides_signature(selected_overrides)
     template_path = get_accounting_template_path()
     if not os.path.exists(template_path):
         return jsonify({'error': 'No se encontro la plantilla "INFORME CONTABILIDAD REF.xlsx"'}), 400
     template_mtime = int(os.path.getmtime(template_path))
-    current_cache_key = f"{get_assets_revision()}:{ACCOUNTING_REPORT_ALGO_VERSION}:{template_mtime}:{month}:{year}:{report_title}:{generated_by}"
+    current_cache_key = f"{get_assets_revision()}:{ACCOUNTING_REPORT_ALGO_VERSION}:{template_mtime}:{month}:{year}:{report_title}:{generated_by}:{overrides_signature}"
 
     with ACCOUNTING_CACHE_LOCK:
         cached_version = ACCOUNTING_REPORT_CACHE.get('version')
@@ -7549,6 +7605,7 @@ def report_accounting_monthly_excel():
     des_formula_cells = []
     family_total_refs = {}
     family_total_values = {}
+    override_hit_counts = {code: 0 for code in selected_overrides.keys()}
     configured_children_by_parent = {
         parent: [code for code in ACCOUNTING_FAMILY_ORDER if len(code) > 4 and code.startswith(parent)]
         for parent in configured_parent_codes
@@ -7602,17 +7659,21 @@ def report_accounting_monthly_excel():
             fam_subtotal = _DEC_ZERO
             detail_start_row = des_row
             for row in fam_rows:
-                c_act_key = str(row.get('C_ACT') or '').strip()
+                c_act_key = normalize_override_asset_code(row.get('C_ACT'))
+                if c_act_key in override_hit_counts:
+                    override_hit_counts[c_act_key] += 1
                 for col_idx, col_name in enumerate(columns_order, start=1):
                     value = row.get(col_name)
-                    if col_name == 'COSTO' and c_act_key in ACCOUNTING_COST_OVERRIDES:
-                        value = float(ACCOUNTING_COST_OVERRIDES[c_act_key])
+                    if col_name == 'COSTO' and c_act_key in selected_overrides:
+                        value = float(selected_overrides[c_act_key])
                     cell = ws_des.cell(des_row, col_idx, value if value is not None else '')
                     if col_name == 'COSTO':
                         cell.number_format = '"$"#,##0.00'
-                        if c_act_key in ACCOUNTING_COST_OVERRIDES:
+                        if c_act_key in selected_overrides:
                             cell.fill = _YELLOW_FILL_DES
-                effective_cost = ACCOUNTING_COST_OVERRIDES.get(c_act_key) or Decimal(str(round(to_number(row.get('COSTO')), 2)))
+                effective_cost = selected_overrides.get(c_act_key)
+                if effective_cost is None:
+                    effective_cost = to_decimal_amount(row.get('COSTO')).quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
                 fam_subtotal += effective_cost
                 des_detail_rows_written += 1
                 des_row += 1
@@ -7664,17 +7725,21 @@ def report_accounting_monthly_excel():
             fam_subtotal = _DEC_ZERO
             detail_start_row = des_row
             for row in fam_rows:
-                c_act_key = str(row.get('C_ACT') or '').strip()
+                c_act_key = normalize_override_asset_code(row.get('C_ACT'))
+                if c_act_key in override_hit_counts:
+                    override_hit_counts[c_act_key] += 1
                 for col_idx, col_name in enumerate(columns_order, start=1):
                     value = row.get(col_name)
-                    if col_name == 'COSTO' and c_act_key in ACCOUNTING_COST_OVERRIDES:
-                        value = float(ACCOUNTING_COST_OVERRIDES[c_act_key])
+                    if col_name == 'COSTO' and c_act_key in selected_overrides:
+                        value = float(selected_overrides[c_act_key])
                     cell = ws_des.cell(des_row, col_idx, value if value is not None else '')
                     if col_name == 'COSTO':
                         cell.number_format = '"$"#,##0.00'
-                        if c_act_key in ACCOUNTING_COST_OVERRIDES:
+                        if c_act_key in selected_overrides:
                             cell.fill = _YELLOW_FILL_DES
-                effective_cost = ACCOUNTING_COST_OVERRIDES.get(c_act_key) or Decimal(str(round(to_number(row.get('COSTO')), 2)))
+                effective_cost = selected_overrides.get(c_act_key)
+                if effective_cost is None:
+                    effective_cost = to_decimal_amount(row.get('COSTO')).quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
                 fam_subtotal += effective_cost
                 des_detail_rows_written += 1
                 des_row += 1
@@ -7717,11 +7782,30 @@ def report_accounting_monthly_excel():
                 f'({des_detail_rows_written}) no coinciden con activos reportables ({report_scope_assets_count})'
             )
         }), 500
+    duplicate_override_codes = sorted([code for code, hits in override_hit_counts.items() if hits > 1])
+    if STRICT_ACCOUNTING_VALIDATION and duplicate_override_codes:
+        return jsonify({
+            'error': (
+                'Validacion interna fallo: codigos override duplicados en el mes '
+                f'({", ".join(duplicate_override_codes)})'
+            )
+        }), 500
+    missing_override_codes = sorted([code for code, hits in override_hit_counts.items() if hits == 0])
+    if missing_override_codes:
+        app.logger.warning(
+            '[ACCOUNTING] Overrides no encontrados para %s-%s: %s',
+            year,
+            str(month).zfill(2),
+            ','.join(missing_override_codes),
+        )
     app.logger.warning(f'[PERF] DESGLOSE NC + validaciones: {_time.perf_counter()-_t2:.2f}s')
     _t3 = _time.perf_counter()
 
     expected_scope_total = sum(
-        (ACCOUNTING_COST_OVERRIDES.get(str(row.get('C_ACT') or '').strip()) or Decimal(str(round(to_number(row.get('COSTO')), 2))))
+        (
+            selected_overrides.get(normalize_override_asset_code(row.get('C_ACT')))
+            or to_decimal_amount(row.get('COSTO')).quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
+        )
         for rows in report_rows_by_code.values()
         for row in rows
     ).quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
