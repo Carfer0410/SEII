@@ -16,6 +16,7 @@ import json
 from threading import Lock
 from functools import lru_cache
 from copy import copy
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timezone
 from io import BytesIO
 from zoneinfo import ZoneInfo
@@ -286,9 +287,27 @@ def format_dt_local(value, fmt='%Y-%m-%d %H:%M'):
     if not dt:
         return ''
     return dt.strftime(fmt)
-ACCOUNTING_REPORT_ALGO_VERSION = 12
+ACCOUNTING_REPORT_ALGO_VERSION = 14
 ACCOUNTING_EXCLUDED_FAMILIES = {'1114001', '4619001'}
 STRICT_ACCOUNTING_VALIDATION = True
+# Costos fijos mensuales definidos por el auxiliar de activos fijos (reemplazo mes a mes).
+# Clave: C_ACT del activo (str), Valor: costo a aplicar en el informe (float).
+ACCOUNTING_COST_OVERRIDES = {
+    '4978':  Decimal('3326296.00'),
+    '6449': Decimal('11424000.33'),
+    '6450': Decimal('11424000.33'),
+    '6451': Decimal('11424000.33'),
+    '6478':  Decimal('1062072.61'),
+    '6575':  Decimal('1945569.12'),
+    '6690':  Decimal('1903999.20'),
+    '6925':  Decimal('297192.00'),
+    '5140':  Decimal('1043997.72'),
+    '3681':  Decimal('3363478.00'),
+    '2638':  Decimal('803333.41'),
+}
+_DEC_ZERO = Decimal('0')
+_DEC_TWO = Decimal('0.01')
+_YELLOW_FILL_DES = PatternFill(fill_type='solid', start_color='FFFF00', end_color='FFFF00')
 MONTH_LABELS_ES = {
     1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril', 5: 'mayo', 6: 'junio',
     7: 'julio', 8: 'agosto', 9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
@@ -7493,6 +7512,9 @@ def report_accounting_monthly_excel():
         parent_codes.append(parent)
         parent_codes_seen.add(parent)
 
+    import time as _time
+    _t0 = _time.perf_counter()
+
     clear_sheet_data(ws_base, 2)
     for col_idx, header in enumerate(columns_order, start=1):
         ws_base.cell(1, col_idx, header)
@@ -7510,6 +7532,9 @@ def report_accounting_monthly_excel():
                 cell.number_format = '"$"#,##0.00'
         row_idx += 1
 
+    app.logger.warning(f'[PERF] BASE COMPLETA escritura: {_time.perf_counter()-_t0:.2f}s ({len(base_rows_sorted)} filas)')
+    _t1 = _time.perf_counter()
+
     clear_sheet_data(ws_des, 2)
     for col_idx, header in enumerate(columns_order, start=1):
         ws_des.cell(1, col_idx, header)
@@ -7517,7 +7542,7 @@ def report_accounting_monthly_excel():
     des_row = 3
     cost_col = columns_order.index('COSTO') + 1
     cost_col_letter = get_column_letter(cost_col)
-    des_total_report_scope = 0.0
+    des_total_report_scope = _DEC_ZERO
     des_detail_rows_written = 0
     assigned_codes = set()
     nc_total_row_des = None
@@ -7564,7 +7589,7 @@ def report_accounting_monthly_excel():
             ws_des.cell(des_row, col_idx, header)
         des_row += 1
 
-        subtotal = 0.0
+        subtotal = _DEC_ZERO
         parent_total_refs = []
         for fam_code in family_codes_order:
             fam_rows = sorted(
@@ -7574,15 +7599,21 @@ def report_accounting_monthly_excel():
             if not fam_rows:
                 continue
 
-            fam_subtotal = 0.0
+            fam_subtotal = _DEC_ZERO
             detail_start_row = des_row
             for row in fam_rows:
+                c_act_key = str(row.get('C_ACT') or '').strip()
                 for col_idx, col_name in enumerate(columns_order, start=1):
                     value = row.get(col_name)
+                    if col_name == 'COSTO' and c_act_key in ACCOUNTING_COST_OVERRIDES:
+                        value = float(ACCOUNTING_COST_OVERRIDES[c_act_key])
                     cell = ws_des.cell(des_row, col_idx, value if value is not None else '')
                     if col_name == 'COSTO':
                         cell.number_format = '"$"#,##0.00'
-                fam_subtotal += to_number(row.get('COSTO'))
+                        if c_act_key in ACCOUNTING_COST_OVERRIDES:
+                            cell.fill = _YELLOW_FILL_DES
+                effective_cost = ACCOUNTING_COST_OVERRIDES.get(c_act_key) or Decimal(str(round(to_number(row.get('COSTO')), 2)))
+                fam_subtotal += effective_cost
                 des_detail_rows_written += 1
                 des_row += 1
 
@@ -7592,36 +7623,27 @@ def report_accounting_monthly_excel():
                 or catalog_names.get(fam_code)
                 or f'FAMILIA {fam_code}'
             )
+            family_total_d = fam_subtotal.quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
             ws_des.cell(des_row, 3, f'TOTAL {fam_code} - {fam_name}').font = Font(bold=True)
-            if detail_end_row >= detail_start_row:
-                family_total_cell = ws_des.cell(
-                    des_row,
-                    cost_col,
-                    f'=ROUND(SUM({cost_col_letter}{detail_start_row}:{cost_col_letter}{detail_end_row}),2)'
-                )
-            else:
-                family_total_cell = ws_des.cell(des_row, cost_col, 0)
+            family_total_cell = ws_des.cell(des_row, cost_col, float(family_total_d))
             family_total_cell.font = Font(bold=True)
             family_total_cell.number_format = '"$"#,##0.00'
             family_total_refs[fam_code] = f'DESGLOSE!${cost_col_letter}${des_row}'
-            family_total_values[fam_code] = round(fam_subtotal, 2)
+            family_total_values[fam_code] = family_total_d
             parent_total_refs.append(f'${cost_col_letter}${des_row}')
             des_row += 1
             subtotal += fam_subtotal
 
+        parent_total_d = subtotal.quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
         ws_des.cell(des_row, 3, f'TOTAL {parent} - {parent_name}').font = Font(bold=True)
-        if parent_total_refs:
-            total_cell = ws_des.cell(
-                des_row,
-                cost_col,
-                f'=ROUND({"+".join(parent_total_refs)},2)'
-            )
-        else:
-            total_cell = ws_des.cell(des_row, cost_col, 0)
+        total_cell = ws_des.cell(des_row, cost_col, float(parent_total_d))
         total_cell.font = Font(bold=True)
         total_cell.number_format = '"$"#,##0.00'
         des_total_report_scope += subtotal
         des_row += 2
+
+    app.logger.warning(f'[PERF] DESGLOSE familias asignadas: {_time.perf_counter()-_t1:.2f}s')
+    _t2 = _time.perf_counter()
 
     unassigned_codes = sorted(code for code in report_rows_by_code.keys() if code not in assigned_codes)
     if unassigned_codes:
@@ -7632,22 +7654,28 @@ def report_accounting_monthly_excel():
             ws_des.cell(des_row, col_idx, header)
         des_row += 1
 
-        nc_subtotal = 0.0
+        nc_subtotal = _DEC_ZERO
         nc_total_refs = []
         for fam_code in unassigned_codes:
             fam_rows = sorted(report_rows_by_code.get(fam_code, []), key=lambda r: str(r.get('C_ACT') or ''))
             if not fam_rows:
                 continue
 
-            fam_subtotal = 0.0
+            fam_subtotal = _DEC_ZERO
             detail_start_row = des_row
             for row in fam_rows:
+                c_act_key = str(row.get('C_ACT') or '').strip()
                 for col_idx, col_name in enumerate(columns_order, start=1):
                     value = row.get(col_name)
+                    if col_name == 'COSTO' and c_act_key in ACCOUNTING_COST_OVERRIDES:
+                        value = float(ACCOUNTING_COST_OVERRIDES[c_act_key])
                     cell = ws_des.cell(des_row, col_idx, value if value is not None else '')
                     if col_name == 'COSTO':
                         cell.number_format = '"$"#,##0.00'
-                fam_subtotal += to_number(row.get('COSTO'))
+                        if c_act_key in ACCOUNTING_COST_OVERRIDES:
+                            cell.fill = _YELLOW_FILL_DES
+                effective_cost = ACCOUNTING_COST_OVERRIDES.get(c_act_key) or Decimal(str(round(to_number(row.get('COSTO')), 2)))
+                fam_subtotal += effective_cost
                 des_detail_rows_written += 1
                 des_row += 1
 
@@ -7657,32 +7685,20 @@ def report_accounting_monthly_excel():
                 or catalog_names.get(fam_code)
                 or f'FAMILIA {fam_code}'
             )
+            family_total_d = fam_subtotal.quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
             ws_des.cell(des_row, 3, f'TOTAL {fam_code} - {fam_name}').font = Font(bold=True)
-            if detail_end_row >= detail_start_row:
-                family_total_cell = ws_des.cell(
-                    des_row,
-                    cost_col,
-                    f'=ROUND(SUM({cost_col_letter}{detail_start_row}:{cost_col_letter}{detail_end_row}),2)'
-                )
-            else:
-                family_total_cell = ws_des.cell(des_row, cost_col, 0)
+            family_total_cell = ws_des.cell(des_row, cost_col, float(family_total_d))
             family_total_cell.font = Font(bold=True)
             family_total_cell.number_format = '"$"#,##0.00'
             family_total_refs[fam_code] = f'DESGLOSE!${cost_col_letter}${des_row}'
-            family_total_values[fam_code] = round(fam_subtotal, 2)
+            family_total_values[fam_code] = family_total_d
             nc_total_refs.append(f'${cost_col_letter}${des_row}')
             des_row += 1
             nc_subtotal += fam_subtotal
 
+        nc_total_d = nc_subtotal.quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
         ws_des.cell(des_row, 3, 'TOTAL NC - NO CLASIFICADAS / FUERA DE ESTRUCTURA').font = Font(bold=True)
-        if nc_total_refs:
-            total_cell = ws_des.cell(
-                des_row,
-                cost_col,
-                f'=ROUND({"+".join(nc_total_refs)},2)'
-            )
-        else:
-            total_cell = ws_des.cell(des_row, cost_col, 0)
+        total_cell = ws_des.cell(des_row, cost_col, float(nc_total_d))
         total_cell.font = Font(bold=True)
         total_cell.number_format = '"$"#,##0.00'
         des_total_report_scope += nc_subtotal
@@ -7701,16 +7717,20 @@ def report_accounting_monthly_excel():
                 f'({des_detail_rows_written}) no coinciden con activos reportables ({report_scope_assets_count})'
             )
         }), 500
-    expected_scope_total = round(sum(
-        to_number(row.get('COSTO'))
+    app.logger.warning(f'[PERF] DESGLOSE NC + validaciones: {_time.perf_counter()-_t2:.2f}s')
+    _t3 = _time.perf_counter()
+
+    expected_scope_total = sum(
+        (ACCOUNTING_COST_OVERRIDES.get(str(row.get('C_ACT') or '').strip()) or Decimal(str(round(to_number(row.get('COSTO')), 2))))
         for rows in report_rows_by_code.values()
         for row in rows
-    ), 2)
-    if STRICT_ACCOUNTING_VALIDATION and abs(round(des_total_report_scope, 2) - expected_scope_total) > 0.01:
+    ).quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
+    des_total_d = des_total_report_scope.quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
+    if STRICT_ACCOUNTING_VALIDATION and abs(des_total_d - expected_scope_total) > Decimal('0.01'):
         return jsonify({
             'error': (
                 'Validacion interna fallo: total DESGLOSE no coincide con total reportable '
-                f'({round(des_total_report_scope, 2)} vs {expected_scope_total})'
+                f'({des_total_d} vs {expected_scope_total})'
             )
         }), 500
 
@@ -7732,50 +7752,59 @@ def report_accounting_monthly_excel():
             if normalize_family_code(fam_code).startswith(prefix)
         ]
 
+    def vals_for_prefix(prefix):
+        return [
+            family_total_values[fam_code]
+            for fam_code in family_total_values
+            if normalize_family_code(fam_code).startswith(prefix)
+        ]
+
+    parent_dec_totals = []
     for group in ACCOUNTING_REPORT_STRUCTURE:
         child_specs = []
         for child in group['children']:
             prefixes = child.get('source_prefixes') or [child.get('source_prefix')]
             formula_refs = []
+            child_val_list = []
             for p in prefixes:
                 if not p:
                     continue
                 formula_refs.extend(refs_for_prefix(p))
-            child_specs.append((child, formula_refs))
+                child_val_list.extend(vals_for_prefix(p))
+            child_specs.append((child, formula_refs, child_val_list))
 
         parent_row = info_row
-        first_child_row = parent_row + 1
-        last_child_row = parent_row + len(child_specs)
         ws_inf.cell(info_row, 3, group['parent_code'])
         ws_inf.cell(info_row, 4, group['parent_name'])
-        parent_value_cell = ws_inf.cell(info_row, 5, f'=SUM(E{first_child_row}:E{last_child_row})')
-        parent_value_cell.number_format = '"$"#,##0.00'
         ws_inf.cell(info_row, 3).font = Font(bold=True)
         ws_inf.cell(info_row, 4).font = Font(bold=True)
-        parent_value_cell.font = Font(bold=True)
         parent_rows_written.append(parent_row)
         info_row += 1
 
-        for child, formula_refs in child_specs:
+        group_child_decs = []
+        for child, formula_refs, child_val_list in child_specs:
             fallback_prefix = (child.get('source_prefixes') or [child.get('source_prefix')] or [''])[0]
             child_name = str(child.get('name') or '').strip() or catalog_names.get(fallback_prefix) or f"SUBFAMILIA {fallback_prefix}"
             ws_inf.cell(info_row, 3, child['report_code'])
             ws_inf.cell(info_row, 4, child_name)
-            child_formula = '+'.join(formula_refs) if formula_refs else '0'
-            child_value_cell = ws_inf.cell(info_row, 5, f'=ROUND({child_formula},2)')
+            child_d = sum(child_val_list, _DEC_ZERO).quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
+            group_child_decs.append(child_d)
+            child_value_cell = ws_inf.cell(info_row, 5, float(child_d))
             child_value_cell.number_format = '"$"#,##0.00'
             info_row += 1
+
+        parent_d = sum(group_child_decs, _DEC_ZERO).quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
+        parent_dec_totals.append(parent_d)
+        parent_value_cell = ws_inf.cell(parent_row, 5, float(parent_d))
+        parent_value_cell.number_format = '"$"#,##0.00'
+        parent_value_cell.font = Font(bold=True)
 
     # Primer subtotal (solo familias inventariadas)
     for c in range(3, 8):
         ws_inf.cell(31, c, None)
     ws_inf.cell(31, 4, 'SUBTOTAL').font = Font(bold=True)
-    subtotal_refs = [f'E{r}' for r in parent_rows_written]
-    if subtotal_refs:
-        subtotal_formula = '+'.join(subtotal_refs)
-        subtotal_cell = ws_inf.cell(31, 5, f'={subtotal_formula}')
-    else:
-        subtotal_cell = ws_inf.cell(31, 5, 0)
+    subtotal_d = sum(parent_dec_totals, _DEC_ZERO).quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
+    subtotal_cell = ws_inf.cell(31, 5, float(subtotal_d))
     subtotal_cell.font = Font(bold=True)
     subtotal_cell.number_format = '"$"#,##0.00'
     ws_inf.cell(31, 6, None)
@@ -7828,13 +7857,21 @@ def report_accounting_monthly_excel():
     wb.calculation.fullCalcOnLoad = True
     wb.calculation.calcMode = 'auto'
 
+    app.logger.warning(f'[PERF] INFORME hoja procesada: {_time.perf_counter()-_t3:.2f}s')
+    _t4 = _time.perf_counter()
+
     out = BytesIO()
     wb.save(out)
     content = out.getvalue()
     safe_period = sanitize_filename(period_label.replace(' ', '_'))
     filename = f'informe_conciliacion_activos_fijos_contabilidad_{safe_period}.xlsx'
 
+    app.logger.warning(f'[PERF] wb.save (serializar xlsx): {_time.perf_counter()-_t4:.2f}s ({len(content)//1024} KB)')
+    _t5 = _time.perf_counter()
+
     persist_accounting_report_file(content, filename, period_label, month, year, report_title, period_id=None)
+    app.logger.warning(f'[PERF] persist_accounting_report_file: {_time.perf_counter()-_t5:.2f}s')
+    app.logger.warning(f'[PERF] TOTAL generacion informe: {_time.perf_counter()-_t0:.2f}s')
 
     with ACCOUNTING_CACHE_LOCK:
         ACCOUNTING_REPORT_CACHE['version'] = current_cache_key
