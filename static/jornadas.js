@@ -497,7 +497,7 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
       </div>
       <div class="closed-runs-wrap"><table class="closed-runs-table closed-runs-table-compact"><thead><tr>
-      <th>ID</th><th>JORNADA</th><th>SERVICIO</th><th>ESTADO</th><th>MOTIVO</th><th>HALLAZGOS <span title="E=Encontrados, NE=No encontrados">(E/NE)</span></th><th>INICIO</th><th>CIERRE</th>
+      <th>ID</th><th>JORNADA</th><th>SERVICIO</th><th>ESTADO</th><th>MOTIVO</th><th>HALLAZGOS <span title="E=Encontrados, NE=No encontrados">(E/NE)</span></th><th>NUEVOS</th><th>INICIO</th><th>CIERRE</th><th>ACCION</th>
     </tr></thead><tbody>${cut
       .map(
         (r) => {
@@ -512,6 +512,8 @@ document.addEventListener("DOMContentLoaded", () => {
           const reason =
             String(r.cancel_reason || "").trim() ||
             (statusLabel === "Cerrada" ? "Cierre normal" : "Sin motivo registrado");
+          const newAssets = Number(r.new_assets_in_scope || 0);
+          const canReopen = !!r.can_reopen && statusLabel === "Cerrada";
           return `<tr>
       <td>${App.escapeHtml(r.id)}</td>
       <td>
@@ -527,6 +529,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <span class="closed-metric warn">NE: ${App.escapeHtml(r.not_found || 0)}</span>
         </div>
       </td>
+      <td>${newAssets > 0 ? `<span class="closed-metric ok">+${App.escapeHtml(newAssets)}</span>` : '<span class="field-help">0</span>'}</td>
       <td>${App.escapeHtml(
         String(r.started_at || "")
           .replace("T", " ")
@@ -537,6 +540,9 @@ document.addEventListener("DOMContentLoaded", () => {
           .replace("T", " ")
           .slice(0, 16),
       )}</td>
+      <td>${canReopen
+        ? `<button type="button" class="mini-btn" data-reopen-run-id="${App.escapeHtml(r.id)}" title="Reabrir por activos nuevos">Reabrir</button>`
+        : '<span class="field-help">-</span>'}</td>
     </tr>`;
         },
       )
@@ -957,13 +963,43 @@ document.addEventListener("DOMContentLoaded", () => {
 
   closedRunsContainer?.addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-closed-action]");
-    if (!btn) return;
-    const action = btn.getAttribute("data-closed-action");
-    const closed = cachedRuns.filter((r) => r.status !== "active");
-    const totalPages = Math.max(1, Math.ceil(closed.length / closedPageSize));
-    if (action === "prev" && closedPage > 1) closedPage -= 1;
-    if (action === "next" && closedPage < totalPages) closedPage += 1;
-    closedRunsContainer.innerHTML = renderClosedRunsTable(closed);
+    if (btn) {
+      const action = btn.getAttribute("data-closed-action");
+      const closed = cachedRuns.filter((r) => r.status !== "active");
+      const totalPages = Math.max(1, Math.ceil(closed.length / closedPageSize));
+      if (action === "prev" && closedPage > 1) closedPage -= 1;
+      if (action === "next" && closedPage < totalPages) closedPage += 1;
+      closedRunsContainer.innerHTML = renderClosedRunsTable(closed);
+      return;
+    }
+    const reopenBtn = e.target.closest("button[data-reopen-run-id]");
+    if (!reopenBtn) return;
+    const runId = Number(reopenBtn.getAttribute("data-reopen-run-id") || 0);
+    if (!runId) return;
+    const runRow = cachedRuns.find((r) => Number(r.id) === Number(runId)) || {};
+    const newAssetsCount = Number(runRow.new_assets_in_scope || 0);
+    const runLabel = String(runRow.name || `ID ${runId}`);
+    showConfirmModal({
+      title: "Reabrir jornada",
+      message:
+        `La jornada "${runLabel}" tiene ${newAssetsCount} activo(s) nuevo(s) en alcance.\n` +
+        "Se reabrira para inventariarlos dentro del mismo periodo y servicio.\n\nDeseas continuar?",
+      okText: "Si, reabrir jornada",
+      cancelText: "Cancelar",
+    }).then(async (accepted) => {
+      if (!accepted) return;
+      try {
+        const data = await App.post(`/runs/${runId}/reopen`, {
+          user: "usuario_movil",
+        });
+        await loadClosedServicesForCreatePeriod();
+        await loadRunsView(data.run?.id || runId);
+        await refreshSummary();
+        App.setStatus(statusEl, data.message || "Jornada reabierta correctamente.");
+      } catch (err) {
+        App.setStatus(statusEl, err.message, true);
+      }
+    });
   });
 
   closedRunsContainer?.addEventListener("change", (e) => {

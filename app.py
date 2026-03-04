@@ -4405,6 +4405,13 @@ def list_runs():
         row['period_status'] = period.status if period else None
         row['found'] = found_by_run.get(r.id, 0)
         row['not_found'] = not_found_by_run.get(r.id, 0)
+        if r.status == 'closed':
+            new_assets = count_new_assets_for_run(r)
+            row['new_assets_in_scope'] = new_assets
+            row['can_reopen'] = new_assets > 0
+        else:
+            row['new_assets_in_scope'] = 0
+            row['can_reopen'] = False
         payload.append(row)
     return jsonify({'runs': payload})
 
@@ -5664,19 +5671,19 @@ def create_run():
     if period.status != 'open':
         return jsonify({'error': 'El periodo seleccionado esta cerrado o anulado'}), 400
 
-    # Regla operativa: un servicio solo se puede inventariar una vez por periodo
-    # cuando ya hizo parte de una jornada cerrada.
+    # Regla operativa: un servicio solo puede tener una jornada por periodo.
+    # Si se requiere continuar por activos nuevos, se debe reabrir la jornada existente.
     requested_services_map = {str(s or '').strip().casefold(): str(s or '').strip() for s in services if str(s or '').strip()}
-    closed_runs = InventoryRun.query.filter(
+    scoped_runs = InventoryRun.query.filter(
         InventoryRun.period_id == period.id,
-        InventoryRun.status == 'closed'
+        InventoryRun.status.in_(['active', 'closed'])
     ).all()
     blocked_services = {}
-    for closed_run in closed_runs:
-        closed_scope_cf = {str(s or '').strip().casefold() for s in run_scope_services(closed_run)}
+    for scoped_run in scoped_runs:
+        closed_scope_cf = {str(s or '').strip().casefold() for s in run_scope_services(scoped_run)}
         for svc_cf, svc_label in requested_services_map.items():
             if svc_cf in closed_scope_cf and svc_label not in blocked_services:
-                blocked_services[svc_label] = closed_run.name or f'ID {closed_run.id}'
+                blocked_services[svc_label] = scoped_run.name or f'ID {scoped_run.id}'
 
     if blocked_services:
         blocked_detail = ', '.join(
@@ -5684,8 +5691,8 @@ def create_run():
         )
         return jsonify({
             'error': (
-                'No puedes crear la jornada porque estos servicios ya fueron ejecutados/cerrados '
-                f'en este periodo: {blocked_detail}.'
+                'No puedes crear la jornada porque estos servicios ya tienen jornada '
+                f'en este periodo: {blocked_detail}. Si hay activos nuevos, reabre la jornada cerrada.'
             )
         }), 400
 
@@ -5760,6 +5767,21 @@ def build_run_coverage_summary(run):
         'found_pct': found_pct,
         'assets_scope': assets_scope,
     }
+
+
+def count_new_assets_for_run(run):
+    q = apply_run_scope_filter(Asset.query, run)
+    asset_ids = [a.id for a in q.all()]
+    if not asset_ids:
+        return 0
+    managed_ids = {
+        int(aid)
+        for (aid,) in db.session.query(RunAssetStatus.asset_id).filter(
+            RunAssetStatus.run_id == run.id,
+            RunAssetStatus.asset_id.in_(asset_ids),
+        ).all()
+    }
+    return sum(1 for aid in asset_ids if aid not in managed_ids)
 
 
 def build_clearance_validation(period_id, run_id):
@@ -6106,6 +6128,41 @@ def cancel_run(run_id):
     run.cancel_reason = reason
     db.session.commit()
     return jsonify({'run': run.to_dict()})
+
+
+@app.route('/runs/<int:run_id>/reopen', methods=['POST'])
+def reopen_run(run_id):
+    ensure_db()
+    run, err = get_run_or_404(run_id)
+    if err:
+        return err
+    if run.status == 'cancelled':
+        return jsonify({'error': 'La jornada esta anulada y no puede reabrirse'}), 400
+    if run.status == 'active':
+        return jsonify({'error': 'La jornada ya esta activa'}), 400
+    if run.status != 'closed':
+        return jsonify({'error': 'Solo puedes reabrir jornadas cerradas'}), 400
+
+    period = InventoryPeriod.query.get(run.period_id) if run.period_id else None
+    if not period:
+        return jsonify({'error': 'La jornada no tiene periodo asociado'}), 400
+    if period.status != 'open':
+        return jsonify({'error': 'Solo puedes reabrir jornadas en periodos abiertos'}), 400
+
+    new_assets = count_new_assets_for_run(run)
+    if new_assets <= 0:
+        return jsonify({
+            'error': 'No hay activos nuevos en el alcance de la jornada para justificar reapertura'
+        }), 400
+
+    run.status = 'active'
+    run.closed_at = None
+    db.session.commit()
+    return jsonify({
+        'run': run.to_dict(),
+        'new_assets_in_scope': new_assets,
+        'message': f'Jornada reabierta correctamente. Activos nuevos en alcance: {new_assets}.',
+    })
 
 
 @app.route('/export', methods=['GET', 'POST'])
