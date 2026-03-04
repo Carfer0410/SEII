@@ -287,7 +287,7 @@ def format_dt_local(value, fmt='%Y-%m-%d %H:%M'):
     if not dt:
         return ''
     return dt.strftime(fmt)
-ACCOUNTING_REPORT_ALGO_VERSION = 17
+ACCOUNTING_REPORT_ALGO_VERSION = 19
 ACCOUNTING_EXCLUDED_FAMILIES = {'1114001', '4619001'}
 STRICT_ACCOUNTING_VALIDATION = True
 # Costos fijos definidos por contabilidad (reemplazo manual por C_ACT).
@@ -618,21 +618,75 @@ class GeneratedReport(db.Model):
     title = db.Column(db.String, nullable=False)
     period_id = db.Column(db.Integer, db.ForeignKey('inventory_period.id'))
     period_label = db.Column(db.String)
+    accounting_base_id = db.Column(db.Integer, db.ForeignKey('accounting_monthly_base.id'))
+    overrides_summary_json = db.Column(db.Text)
     file_name = db.Column(db.String, nullable=False)
     file_path = db.Column(db.String, nullable=False)
     generated_at = db.Column(db.String, nullable=False)
 
     def to_dict(self):
+        overrides_summary = []
+        if self.overrides_summary_json:
+            try:
+                parsed = json.loads(self.overrides_summary_json)
+                if isinstance(parsed, list):
+                    overrides_summary = parsed
+            except Exception:
+                overrides_summary = []
         return {
             'id': self.id,
             'report_type': self.report_type,
             'title': self.title,
             'period_id': self.period_id,
             'period_label': self.period_label,
+            'accounting_base_id': self.accounting_base_id,
+            'overrides_summary': overrides_summary,
             'file_name': self.file_name,
             'generated_at': self.generated_at,
             'generated_at_local': format_dt_local(self.generated_at),
         }
+
+
+class AccountingMonthlyBase(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    period_year = db.Column(db.Integer, nullable=False)
+    period_month = db.Column(db.Integer, nullable=False)
+    period_label = db.Column(db.String, nullable=False)
+    source_file_name = db.Column(db.String, nullable=False)
+    source_file_path = db.Column(db.String, nullable=False)
+    uploaded_by = db.Column(db.String)
+    uploaded_at = db.Column(db.String, nullable=False)
+    asset_count = db.Column(db.Integer, nullable=False, default=0)
+    status = db.Column(db.String, nullable=False, default='active')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'period_year': self.period_year,
+            'period_month': self.period_month,
+            'period_label': self.period_label,
+            'source_file_name': self.source_file_name,
+            'uploaded_by': self.uploaded_by or '',
+            'uploaded_at': self.uploaded_at,
+            'uploaded_at_local': format_dt_local(self.uploaded_at),
+            'asset_count': int(self.asset_count or 0),
+            'status': self.status,
+        }
+
+
+class AccountingMonthlyBaseAsset(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    base_id = db.Column(db.Integer, db.ForeignKey('accounting_monthly_base.id'), nullable=False)
+    c_act = db.Column(db.String, nullable=False)
+    c_fam = db.Column(db.String)
+    nom_fam = db.Column(db.String)
+    costo = db.Column(db.Float)
+    saldo = db.Column(db.Float)
+    raw_row_json = db.Column(db.Text)
+
+    __table_args__ = (
+        UniqueConstraint('base_id', 'c_act', name='uq_accounting_base_asset'),
+    )
 
 
 class AssetIssue(db.Model):
@@ -918,6 +972,10 @@ def ensure_schema_updates():
         report_columns = {row[1] for row in conn.execute(text('PRAGMA table_info(generated_report)')).fetchall()}
         if 'period_id' not in report_columns:
             conn.execute(text('ALTER TABLE generated_report ADD COLUMN period_id INTEGER'))
+        if 'accounting_base_id' not in report_columns:
+            conn.execute(text('ALTER TABLE generated_report ADD COLUMN accounting_base_id INTEGER'))
+        if 'overrides_summary_json' not in report_columns:
+            conn.execute(text('ALTER TABLE generated_report ADD COLUMN overrides_summary_json TEXT'))
 
         disposal_columns = {row[1] for row in conn.execute(text('PRAGMA table_info(asset_disposal)')).fetchall()}
         if 'period_id' not in disposal_columns:
@@ -6676,7 +6734,110 @@ def sanitize_filename(text):
     return clean or 'reporte'
 
 
-def persist_accounting_report_file(content, file_name, period_label, month, year, report_title, period_id=None):
+def accounting_base_folder(year, month):
+    return os.path.join(REPORTS_DIR, 'accounting_monthly', 'bases', str(year), f'{month:02d}')
+
+
+def read_accounting_base_dataframe(file_storage):
+    file_name = str(getattr(file_storage, 'filename', '') or '').lower()
+    if file_name.endswith('.csv'):
+        return pd.read_csv(file_storage)
+    return pd.read_excel(file_storage)
+
+
+def extract_accounting_base_rows(df):
+    cols = normalize_columns(df.columns)
+    if 'C_ACT' not in cols:
+        raise ValueError('El archivo debe contener la columna C_ACT')
+    ordered_cols = list(df.columns)
+    rows = []
+
+    for _, row in df.iterrows():
+        c_act_val = get_cell(row, cols, 'C_ACT')
+        c_act_raw = str(c_act_val).strip() if c_act_val is not None else ''
+        c_act = normalize_override_asset_code(c_act_raw)
+        if not c_act:
+            continue
+        raw_payload = {}
+        for col_name in ordered_cols:
+            key = str(col_name).strip().upper()
+            raw_payload[key] = None if pd.isna(row[col_name]) else serialize_raw_value_for_json(row[col_name])
+        fam_code = normalize_family_code(get_cell(row, cols, 'C_FAM'))
+        fam_name = str(get_cell(row, cols, 'NOM_FAM') or '').strip()
+        rows.append({
+            'c_act': c_act,
+            'c_fam': fam_code,
+            'nom_fam': fam_name,
+            'costo': try_float(get_cell(row, cols, 'COSTO')),
+            'saldo': try_float(get_cell(row, cols, 'SALDO')),
+            'raw_row_json': json.dumps(raw_payload, ensure_ascii=False, default=str),
+        })
+    return rows
+
+
+def serialize_raw_value_for_json(v):
+    if isinstance(v, pd.Timestamp):
+        return v.isoformat()
+    if hasattr(v, 'item'):
+        try:
+            return v.item()
+        except Exception:
+            return v
+    return v
+
+
+def get_latest_accounting_base(month, year):
+    return AccountingMonthlyBase.query.filter_by(
+        period_month=month,
+        period_year=year,
+        status='active',
+    ).order_by(AccountingMonthlyBase.id.desc()).first()
+
+
+def build_overrides_summary_for_rows(asset_rows, selected_overrides):
+    assets_by_code = {}
+    for _, c_act, c_fam, nom_fam, costo, saldo in asset_rows:
+        key = normalize_override_asset_code(c_act)
+        assets_by_code.setdefault(key, []).append({
+            'c_act': key,
+            'c_fam': normalize_family_code(c_fam),
+            'nom_fam': str(nom_fam or '').strip(),
+            'costo': to_decimal_amount(costo, default=Decimal('0')).quantize(_DEC_TWO, rounding=ROUND_HALF_UP),
+        })
+    rows = []
+    total_delta = _DEC_ZERO
+    for code in sorted(selected_overrides.keys()):
+        override_cost = selected_overrides.get(code, _DEC_ZERO).quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
+        matches = assets_by_code.get(code, [])
+        base_cost = matches[0]['costo'] if matches else None
+        delta = (override_cost - base_cost) if base_cost is not None else None
+        if delta is not None:
+            delta = delta.quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
+            total_delta += delta
+        rows.append({
+            'c_act': code,
+            'present': bool(matches),
+            'hits': len(matches),
+            'c_fam': (matches[0]['c_fam'] if matches else ''),
+            'nom_fam': (matches[0]['nom_fam'] if matches else ''),
+            'base_cost': (float(base_cost) if base_cost is not None else None),
+            'override_cost': float(override_cost),
+            'delta': (float(delta) if delta is not None else None),
+        })
+    summary = {
+        'rows': rows,
+        'totals': {
+            'configured': len(selected_overrides),
+            'present': sum(1 for r in rows if r['present']),
+            'missing': sum(1 for r in rows if not r['present']),
+            'duplicates': sum(1 for r in rows if r['hits'] > 1),
+            'delta_total': float(total_delta.quantize(_DEC_TWO, rounding=ROUND_HALF_UP)),
+        },
+    }
+    return summary
+
+
+def persist_accounting_report_file(content, file_name, period_label, month, year, report_title, period_id=None, accounting_base_id=None, overrides_summary=None):
     reports_folder = os.path.join(REPORTS_DIR, 'accounting_monthly', str(year), f'{month:02d}')
     os.makedirs(reports_folder, exist_ok=True)
 
@@ -6690,6 +6851,8 @@ def persist_accounting_report_file(content, file_name, period_label, month, year
         title=report_title or 'Informe de conciliacion activos fijos - contabilidad',
         period_id=period_id,
         period_label=period_label,
+        accounting_base_id=accounting_base_id,
+        overrides_summary_json=(json.dumps(overrides_summary, ensure_ascii=False) if overrides_summary else None),
         file_name=os.path.basename(file_path),
         file_path=file_path,
         generated_at=now_iso(),
@@ -7416,13 +7579,19 @@ def report_accounting_monthly_excel():
     month, year = normalize_month_year(request.args.get('month'), request.args.get('year'))
     month_label = MONTH_LABELS_ES.get(month, str(month))
     period_label = f'{month_label} {year}'
+    accounting_base = get_latest_accounting_base(month, year)
+    if not accounting_base:
+        return jsonify({'error': f'No hay base mensual cargada para {period_label}. Cargala en el modulo de Informes antes de generar.'}), 400
     selected_overrides = get_accounting_cost_overrides(month, year)
     overrides_signature = accounting_overrides_signature(selected_overrides)
     template_path = get_accounting_template_path()
     if not os.path.exists(template_path):
         return jsonify({'error': 'No se encontro la plantilla "INFORME CONTABILIDAD REF.xlsx"'}), 400
     template_mtime = int(os.path.getmtime(template_path))
-    current_cache_key = f"{get_assets_revision()}:{ACCOUNTING_REPORT_ALGO_VERSION}:{template_mtime}:{month}:{year}:{report_title}:{generated_by}:{overrides_signature}"
+    current_cache_key = (
+        f"{ACCOUNTING_REPORT_ALGO_VERSION}:{template_mtime}:{month}:{year}:{report_title}:{generated_by}:"
+        f"{overrides_signature}:base:{accounting_base.id}:{accounting_base.uploaded_at}"
+    )
 
     with ACCOUNTING_CACHE_LOCK:
         cached_version = ACCOUNTING_REPORT_CACHE.get('version')
@@ -7432,7 +7601,16 @@ def report_accounting_monthly_excel():
     if (not force_refresh) and cached_version == current_cache_key and cached_bytes:
         safe_period = sanitize_filename(period_label.replace(' ', '_'))
         base_filename = f'informe_conciliacion_activos_fijos_contabilidad_{safe_period}.xlsx'
-        persist_accounting_report_file(cached_bytes, base_filename, period_label, month, year, report_title, period_id=None)
+        persist_accounting_report_file(
+            cached_bytes,
+            base_filename,
+            period_label,
+            month,
+            year,
+            report_title,
+            period_id=None,
+            accounting_base_id=accounting_base.id,
+        )
         return send_file(
             BytesIO(cached_bytes),
             as_attachment=True,
@@ -7441,15 +7619,16 @@ def report_accounting_monthly_excel():
         )
 
     asset_rows = db.session.query(
-        Asset.raw_row_json,
-        Asset.c_act,
-        Asset.c_fam,
-        Asset.nom_fam,
-        Asset.costo,
-        Asset.saldo,
-    ).all()
+        AccountingMonthlyBaseAsset.raw_row_json,
+        AccountingMonthlyBaseAsset.c_act,
+        AccountingMonthlyBaseAsset.c_fam,
+        AccountingMonthlyBaseAsset.nom_fam,
+        AccountingMonthlyBaseAsset.costo,
+        AccountingMonthlyBaseAsset.saldo,
+    ).filter_by(base_id=accounting_base.id).all()
     if not asset_rows:
-        return jsonify({'error': 'No hay activos cargados para generar el informe'}), 400
+        return jsonify({'error': f'La base mensual seleccionada ({period_label}) no tiene activos'}), 400
+    overrides_summary = build_overrides_summary_for_rows(asset_rows, selected_overrides)
 
     def row_values(ws, row_idx):
         return [ws.cell(row_idx, c).value for c in range(1, ws.max_column + 1)]
@@ -7686,7 +7865,8 @@ def report_accounting_monthly_excel():
             )
             family_total_d = fam_subtotal.quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
             ws_des.cell(des_row, 3, f'TOTAL {fam_code} - {fam_name}').font = Font(bold=True)
-            family_total_cell = ws_des.cell(des_row, cost_col, float(family_total_d))
+            formula_range = f"${cost_col_letter}${detail_start_row}:${cost_col_letter}${detail_end_row}"
+            family_total_cell = ws_des.cell(des_row, cost_col, f"=SUM({formula_range})")
             family_total_cell.font = Font(bold=True)
             family_total_cell.number_format = '"$"#,##0.00'
             family_total_refs[fam_code] = f'DESGLOSE!${cost_col_letter}${des_row}'
@@ -7697,7 +7877,10 @@ def report_accounting_monthly_excel():
 
         parent_total_d = subtotal.quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
         ws_des.cell(des_row, 3, f'TOTAL {parent} - {parent_name}').font = Font(bold=True)
-        total_cell = ws_des.cell(des_row, cost_col, float(parent_total_d))
+        if parent_total_refs:
+            total_cell = ws_des.cell(des_row, cost_col, f"=SUM({','.join(parent_total_refs)})")
+        else:
+            total_cell = ws_des.cell(des_row, cost_col, 0.0)
         total_cell.font = Font(bold=True)
         total_cell.number_format = '"$"#,##0.00'
         des_total_report_scope += subtotal
@@ -7752,7 +7935,8 @@ def report_accounting_monthly_excel():
             )
             family_total_d = fam_subtotal.quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
             ws_des.cell(des_row, 3, f'TOTAL {fam_code} - {fam_name}').font = Font(bold=True)
-            family_total_cell = ws_des.cell(des_row, cost_col, float(family_total_d))
+            formula_range = f"${cost_col_letter}${detail_start_row}:${cost_col_letter}${detail_end_row}"
+            family_total_cell = ws_des.cell(des_row, cost_col, f"=SUM({formula_range})")
             family_total_cell.font = Font(bold=True)
             family_total_cell.number_format = '"$"#,##0.00'
             family_total_refs[fam_code] = f'DESGLOSE!${cost_col_letter}${des_row}'
@@ -7763,7 +7947,10 @@ def report_accounting_monthly_excel():
 
         nc_total_d = nc_subtotal.quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
         ws_des.cell(des_row, 3, 'TOTAL NC - NO CLASIFICADAS / FUERA DE ESTRUCTURA').font = Font(bold=True)
-        total_cell = ws_des.cell(des_row, cost_col, float(nc_total_d))
+        if nc_total_refs:
+            total_cell = ws_des.cell(des_row, cost_col, f"=SUM({','.join(nc_total_refs)})")
+        else:
+            total_cell = ws_des.cell(des_row, cost_col, 0.0)
         total_cell.font = Font(bold=True)
         total_cell.number_format = '"$"#,##0.00'
         des_total_report_scope += nc_subtotal
@@ -7873,13 +8060,21 @@ def report_accounting_monthly_excel():
             ws_inf.cell(info_row, 4, child_name)
             child_d = sum(child_val_list, _DEC_ZERO).quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
             group_child_decs.append(child_d)
-            child_value_cell = ws_inf.cell(info_row, 5, float(child_d))
+            if formula_refs:
+                child_value_cell = ws_inf.cell(info_row, 5, f"=SUM({','.join(formula_refs)})")
+            else:
+                child_value_cell = ws_inf.cell(info_row, 5, 0.0)
             child_value_cell.number_format = '"$"#,##0.00'
             info_row += 1
 
         parent_d = sum(group_child_decs, _DEC_ZERO).quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
         parent_dec_totals.append(parent_d)
-        parent_value_cell = ws_inf.cell(parent_row, 5, float(parent_d))
+        child_start_row = parent_row + 1
+        child_end_row = info_row - 1
+        if child_end_row >= child_start_row:
+            parent_value_cell = ws_inf.cell(parent_row, 5, f"=SUM(E{child_start_row}:E{child_end_row})")
+        else:
+            parent_value_cell = ws_inf.cell(parent_row, 5, 0.0)
         parent_value_cell.number_format = '"$"#,##0.00'
         parent_value_cell.font = Font(bold=True)
 
@@ -7888,7 +8083,11 @@ def report_accounting_monthly_excel():
         ws_inf.cell(31, c, None)
     ws_inf.cell(31, 4, 'SUBTOTAL').font = Font(bold=True)
     subtotal_d = sum(parent_dec_totals, _DEC_ZERO).quantize(_DEC_TWO, rounding=ROUND_HALF_UP)
-    subtotal_cell = ws_inf.cell(31, 5, float(subtotal_d))
+    if parent_rows_written:
+        subtotal_refs = [f"E{r}" for r in parent_rows_written]
+        subtotal_cell = ws_inf.cell(31, 5, f"=SUM({','.join(subtotal_refs)})")
+    else:
+        subtotal_cell = ws_inf.cell(31, 5, 0.0)
     subtotal_cell.font = Font(bold=True)
     subtotal_cell.number_format = '"$"#,##0.00'
     ws_inf.cell(31, 6, None)
@@ -7953,7 +8152,17 @@ def report_accounting_monthly_excel():
     app.logger.warning(f'[PERF] wb.save (serializar xlsx): {_time.perf_counter()-_t4:.2f}s ({len(content)//1024} KB)')
     _t5 = _time.perf_counter()
 
-    persist_accounting_report_file(content, filename, period_label, month, year, report_title, period_id=None)
+    persist_accounting_report_file(
+        content,
+        filename,
+        period_label,
+        month,
+        year,
+        report_title,
+        period_id=None,
+        accounting_base_id=accounting_base.id,
+        overrides_summary=overrides_summary.get('rows', []),
+    )
     app.logger.warning(f'[PERF] persist_accounting_report_file: {_time.perf_counter()-_t5:.2f}s')
     app.logger.warning(f'[PERF] TOTAL generacion informe: {_time.perf_counter()-_t0:.2f}s')
 
@@ -7971,11 +8180,151 @@ def report_accounting_monthly_excel():
     )
 
 
+@app.route('/reports/accounting_monthly_bases/upload', methods=['POST'])
+def upload_accounting_monthly_base():
+    ensure_db()
+    f = request.files.get('file')
+    if not f:
+        return jsonify({'error': 'Debes adjuntar el archivo base mensual'}), 400
+    month, year = normalize_month_year(request.form.get('month'), request.form.get('year'))
+    uploaded_by = str(request.form.get('uploaded_by') or '').strip()
+    period_label = f"{MONTH_LABELS_ES.get(month, str(month))} {year}"
+
+    source_name = sanitize_filename(os.path.basename(str(f.filename or '').strip() or f'base_{year}_{month:02d}.xlsx'))
+    raw_content = f.read()
+    if not raw_content:
+        return jsonify({'error': 'El archivo base mensual esta vacio'}), 400
+
+    try:
+        if source_name.lower().endswith('.csv'):
+            df = pd.read_csv(BytesIO(raw_content))
+        else:
+            df = pd.read_excel(BytesIO(raw_content))
+        parsed_rows = extract_accounting_base_rows(df)
+    except Exception as exc:
+        return jsonify({'error': f'Error leyendo archivo base mensual: {exc}'}), 400
+
+    if not parsed_rows:
+        return jsonify({'error': 'La base mensual no contiene activos validos'}), 400
+
+    unique_rows = {}
+    for row in parsed_rows:
+        unique_rows[row['c_act']] = row
+    rows_to_insert = list(unique_rows.values())
+
+    folder = accounting_base_folder(year, month)
+    os.makedirs(folder, exist_ok=True)
+    stamped_name = sanitize_filename(f"{os.path.splitext(source_name)[0]}_{now_local_dt().strftime('%Y%m%d%H%M%S')}{os.path.splitext(source_name)[1]}")
+    file_path = os.path.join(folder, stamped_name)
+    with open(file_path, 'wb') as out:
+        out.write(raw_content)
+
+    base_row = AccountingMonthlyBase(
+        period_year=year,
+        period_month=month,
+        period_label=period_label,
+        source_file_name=stamped_name,
+        source_file_path=file_path,
+        uploaded_by=uploaded_by,
+        uploaded_at=now_iso(),
+        asset_count=len(rows_to_insert),
+        status='active',
+    )
+    db.session.add(base_row)
+    db.session.flush()
+
+    for row in rows_to_insert:
+        db.session.add(AccountingMonthlyBaseAsset(
+            base_id=base_row.id,
+            c_act=row['c_act'],
+            c_fam=row.get('c_fam'),
+            nom_fam=row.get('nom_fam'),
+            costo=row.get('costo'),
+            saldo=row.get('saldo'),
+            raw_row_json=row.get('raw_row_json'),
+        ))
+    db.session.commit()
+    invalidate_accounting_report_cache()
+
+    return jsonify({
+        'base': base_row.to_dict(),
+        'parsed_rows': len(parsed_rows),
+        'deduplicated_rows': len(rows_to_insert),
+    })
+
+
+@app.route('/reports/accounting_monthly_bases', methods=['GET'])
+def list_accounting_monthly_bases():
+    ensure_db()
+    month_raw = request.args.get('month')
+    year_raw = request.args.get('year')
+    q = AccountingMonthlyBase.query
+    if str(month_raw or '').strip() and str(year_raw or '').strip():
+        month, year = normalize_month_year(month_raw, year_raw)
+        q = q.filter_by(period_month=month, period_year=year)
+    rows = q.order_by(
+        AccountingMonthlyBase.period_year.desc(),
+        AccountingMonthlyBase.period_month.desc(),
+        AccountingMonthlyBase.id.desc(),
+    ).limit(300).all()
+    return jsonify({'items': [r.to_dict() for r in rows]})
+
+
+@app.route('/reports/accounting_monthly_bases/<int:base_id>/download', methods=['GET'])
+def download_accounting_monthly_base(base_id):
+    ensure_db()
+    row = AccountingMonthlyBase.query.get(base_id)
+    if not row:
+        return jsonify({'error': 'Base mensual no encontrada'}), 404
+    if not row.source_file_path or not os.path.exists(row.source_file_path):
+        return jsonify({'error': 'El archivo de base mensual no existe en almacenamiento'}), 404
+    return send_file(
+        row.source_file_path,
+        as_attachment=True,
+        download_name=row.source_file_name or os.path.basename(row.source_file_path),
+    )
+
+
+@app.route('/reports/accounting_monthly_overrides_summary', methods=['GET'])
+def accounting_monthly_overrides_summary():
+    ensure_db()
+    month, year = normalize_month_year(request.args.get('month'), request.args.get('year'))
+    base_row = get_latest_accounting_base(month, year)
+    if not base_row:
+        return jsonify({'error': f'No hay base mensual cargada para {MONTH_LABELS_ES.get(month, month)} {year}'}), 404
+
+    asset_rows = db.session.query(
+        AccountingMonthlyBaseAsset.raw_row_json,
+        AccountingMonthlyBaseAsset.c_act,
+        AccountingMonthlyBaseAsset.c_fam,
+        AccountingMonthlyBaseAsset.nom_fam,
+        AccountingMonthlyBaseAsset.costo,
+        AccountingMonthlyBaseAsset.saldo,
+    ).filter_by(base_id=base_row.id).all()
+    selected_overrides = get_accounting_cost_overrides(month, year)
+    summary = build_overrides_summary_for_rows(asset_rows, selected_overrides)
+    return jsonify({
+        'period': {'month': month, 'year': year, 'label': base_row.period_label},
+        'base': base_row.to_dict(),
+        'summary': summary,
+    })
+
+
 @app.route('/reports/accounting_monthly_history', methods=['GET'])
 def accounting_monthly_history():
     ensure_db()
     rows = GeneratedReport.query.filter_by(report_type='accounting_monthly').order_by(GeneratedReport.id.desc()).limit(200).all()
-    return jsonify({'items': [r.to_dict() for r in rows]})
+    base_ids = sorted({r.accounting_base_id for r in rows if r.accounting_base_id})
+    base_map = {}
+    if base_ids:
+        for base_row in AccountingMonthlyBase.query.filter(AccountingMonthlyBase.id.in_(base_ids)).all():
+            base_map[base_row.id] = base_row.to_dict()
+    items = []
+    for row in rows:
+        payload = row.to_dict()
+        payload['accounting_base'] = base_map.get(row.accounting_base_id)
+        items.append(payload)
+    return jsonify({'items': items})
 
 
 @app.route('/reports/accounting_monthly_history/<int:report_id>/download', methods=['GET'])

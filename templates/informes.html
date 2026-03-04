@@ -20,6 +20,60 @@
 
     <section id="panelAccounting" class="report-panel active">
       <div class="card">
+        <h3>Base contable mensual</h3>
+        <p class="field-help">Carga la base oficial del mes para generar conciliacion sin afectar la base operativa global.</p>
+        <div class="grid-2">
+          <div class="stack section-highlight">
+            <label>Mes de la base</label>
+            <select id="accountingBaseMonth">
+              <option value="1">Enero</option>
+              <option value="2">Febrero</option>
+              <option value="3">Marzo</option>
+              <option value="4">Abril</option>
+              <option value="5">Mayo</option>
+              <option value="6">Junio</option>
+              <option value="7">Julio</option>
+              <option value="8">Agosto</option>
+              <option value="9">Septiembre</option>
+              <option value="10">Octubre</option>
+              <option value="11">Noviembre</option>
+              <option value="12">Diciembre</option>
+            </select>
+          </div>
+          <div class="stack section-highlight">
+            <label>Año de la base</label>
+            <input id="accountingBaseYear" type="number" min="2000" max="2100" step="1" />
+          </div>
+        </div>
+        <div class="stack section-highlight">
+          <label>Usuario que carga base</label>
+          <input id="accountingBaseUploadedBy" placeholder="Nombre de quien realiza la carga" />
+        </div>
+        <div class="stack section-highlight">
+          <label>Archivo base mensual (Excel/CSV)</label>
+          <input id="accountingBaseFile" type="file" accept=".xlsx,.xls,.csv" />
+        </div>
+        <div class="row report-actions section-highlight actions-highlight">
+          <button id="uploadAccountingBaseBtn" type="button">Cargar base mensual</button>
+          <button id="refreshAccountingBasesBtn" type="button">Actualizar bases</button>
+          <button id="refreshOverridesSummaryBtn" type="button">Ver ajustes contables del mes</button>
+        </div>
+        <div id="accountingBaseStatus" class="status"></div>
+      </div>
+
+      <div class="card">
+        <h3>Bases mensuales cargadas</h3>
+        <p class="field-help">Historial de bases de contabilidad por periodo, con descarga del archivo fuente.</p>
+        <div id="accountingBasesContainer"></div>
+      </div>
+
+      <div class="card">
+        <h3>Ajustes contables aplicados</h3>
+        <p class="field-help">Resumen de ajustes contables contra la base del mes seleccionado.</p>
+        <div id="accountingOverridesSummaryContainer"></div>
+      </div>
+
+      <div class="card">
         <h3>Informe contable mensual</h3>
         <p class="field-help">Genera el archivo oficial de conciliacion con base completa, desglose por familias e informe consolidado.</p>
         <div class="stack section-highlight">
