@@ -356,54 +356,44 @@ ASSET_ASSIST_OCR_FIELDS = [
 ]
 ASSET_ASSIST_CATEGORY_RULES = [
     {
-        'key': 'mesa',
-        'label': 'Mesa',
-        'keywords': ['mesa', 'mesa auxiliar', 'mesita', 'escritorio', 'modulo', 'mostrador', 'puesto de trabajo'],
-        'model_labels': ['dining table', 'table', 'desk'],
-        'exclude_keywords': ['monitor', 'bomba', 'pulsoximetro', 'computador', 'cpu'],
-    },
-    {
-        'key': 'silla',
-        'label': 'Silla',
-        'keywords': ['silla', 'sillon', 'butaco', 'banqueta', 'poltrona'],
-        'model_labels': ['chair', 'couch'],
-        'exclude_keywords': ['monitor', 'bomba', 'computador', 'cpu', 'mesa'],
-    },
-    {
-        'key': 'camilla',
-        'label': 'Camilla/Cama',
-        'keywords': ['camilla', 'cama', 'cuna', 'incubadora'],
-        'model_labels': ['bed'],
-        'exclude_keywords': ['computador', 'cpu', 'teclado', 'impresora'],
-    },
-    {
-        'key': 'computo',
-        'label': 'Computo',
-        'keywords': [
-            'computador', 'cpu', 'pc', 'all in one', 'portatil', 'laptop',
-            'teclado', 'mouse', 'impresora', 'scanner', 'monitor led', 'monitor de pc'
-        ],
-        'model_labels': ['laptop', 'tv', 'keyboard', 'mouse'],
-        'exclude_keywords': [
-            'signos vitales', 'multiparametro', 'pulsoximetro', 'desfibrilador', 'bomba de infusion', 'biomedico'
-        ],
-    },
-    {
         'key': 'biomedico',
         'label': 'Biomedico',
         'keywords': [
-            'bomba', 'ventilador', 'desfibrilador', 'monitor de signos', 'signos vitales',
-            'monitor multiparametro', 'multiparametro', 'oximetro', 'pulsoximetro', 'electro', 'ecografo'
+            'biomed', 'medic', 'hospital', 'monitor de signos', 'signos vitales', 'multiparametro',
+            'desfibrilador', 'bomba de infusion', 'ventilador', 'oximetro', 'pulsoximetro', 'electro', 'ecografo',
         ],
-        'model_labels': ['medical equipment', 'machine'],
-        'exclude_keywords': ['cpu', 'pc', 'computador', 'portatil', 'laptop', 'impresora', 'teclado', 'mouse'],
+        'model_labels': [],
+        'exclude_keywords': ['escritorio', 'mesa oficina', 'cpu', 'pc', 'impresora'],
     },
     {
-        'key': 'carro',
-        'label': 'Carro/Carro de paro',
-        'keywords': ['carro', 'carretilla', 'rodable'],
-        'model_labels': ['cart'],
-        'exclude_keywords': ['computador', 'monitor', 'bomba'],
+        'key': 'mueble_enser',
+        'label': 'Mueble y Enser',
+        'keywords': [
+            'mueble', 'enser', 'mesa', 'silla', 'atril', 'escritorio', 'archivador', 'gabinete',
+            'estante', 'locker', 'camilla', 'vitrina', 'modulo',
+        ],
+        'model_labels': [],
+        'exclude_keywords': ['bomba infusion', 'desfibrilador', 'ventilador'],
+    },
+    {
+        'key': 'industrial',
+        'label': 'Industrial',
+        'keywords': [
+            'industrial', 'planta', 'compresor', 'tablero', 'caldera', 'motor', 'generador',
+            'transformador', 'subestacion', 'chiller',
+        ],
+        'model_labels': [],
+        'exclude_keywords': ['monitor signos', 'portatil', 'escritorio'],
+    },
+    {
+        'key': 'tecnologico',
+        'label': 'Tecnologico',
+        'keywords': [
+            'tecnolog', 'computador', 'cpu', 'pc', 'all in one', 'portatil', 'laptop', 'teclado',
+            'mouse', 'impresora', 'scanner', 'router', 'switch', 'comunicacion',
+        ],
+        'model_labels': [],
+        'exclude_keywords': ['signos vitales', 'desfibrilador', 'camilla'],
     },
 ]
 ACCOUNTING_REPORT_STRUCTURE = [
@@ -2274,6 +2264,21 @@ def normalize_manual_disposal_type(type_value):
         'CONTROL - TECNOLOGICO': 'CONTROL - TECNOLOGICO',
     }
     return mapping.get(txt, '')
+
+
+def normalize_asset_major_type(group_value):
+    txt = str(group_value or '').strip().upper()
+    txt = unicodedata.normalize('NFD', txt)
+    txt = ''.join(ch for ch in txt if unicodedata.category(ch) != 'Mn')
+    if 'BIOMED' in txt:
+        return 'BIOMEDICO'
+    if 'MUEBLE' in txt or 'ENSER' in txt:
+        return 'MUEBLE Y ENSER'
+    if 'INDUSTR' in txt:
+        return 'INDUSTRIAL'
+    if 'TECNOLOG' in txt:
+        return 'TECNOLOGICO'
+    return 'TECNOLOGICO'
 
 
 def query_disposals(service=None, status=None, period_id=None):
@@ -7269,8 +7274,9 @@ def extract_text_signals_from_image(file_bytes):
 
     try:
         import pytesseract
+        from PIL import Image as PILImage
         from PIL import ImageOps, ImageEnhance
-    except Exception:
+    except ImportError:
         return result
 
     try:
@@ -7485,19 +7491,21 @@ def build_asset_assisted_candidates(max_candidates, category_info, ocr_tokens, s
     return out, len(rows)
 
 
-def _token_matches_all(tokens, text_blob):
+def _token_match_ratio(tokens, text_blob):
     if not tokens:
-        return True
+        return 1.0, []
     blob = normalize_search_text(text_blob)
-    return all(tok in blob for tok in tokens)
+    matched = [tok for tok in tokens if tok in blob]
+    return (len(matched) / max(1, len(tokens))), matched
 
 
-def build_quick_lookup_candidates(rule_key, service_hint, location_hint, query_text, technical_text, limit):
+def build_quick_lookup_candidates(rule_key, service_hint, location_hint, query_text, technical_text, subtype_text, limit):
     query = Asset.query.filter(Asset.estado_inventario == 'No encontrado')
     rows = query.limit(8000).all()
     rule = get_assist_rule(rule_key) if rule_key else None
     query_tokens = tokenize_search_text(query_text)
     technical_tokens = tokenize_search_text(technical_text)
+    subtype_tokens = tokenize_search_text(subtype_text)
 
     filtered = []
     svc_filter = normalize_search_text(service_hint)
@@ -7508,13 +7516,17 @@ def build_quick_lookup_candidates(rule_key, service_hint, location_hint, query_t
         reasons = []
         include_hits = []
         exclude_hits = []
+        group_full = str(asset.tipo_activo_cache or '').strip() or classify_asset_group(asset)
+        major_type = normalize_asset_major_type(group_full)
 
         if rule:
-            include_hits, exclude_hits = category_keyword_matches(blob, rule)
-            # Modo filtro estricto: si se define tipo, debe coincidir con ese tipo.
-            if (not include_hits) or exclude_hits:
+            selected_major = normalize_asset_major_type(rule.get('label'))
+            if major_type != selected_major:
                 continue
-            reasons.append(f"tipo:{include_hits[0]}")
+            reasons.append(f"tipo:{selected_major}")
+            include_hits, exclude_hits = category_keyword_matches(blob, rule)
+            if include_hits:
+                reasons.append(f"tipo_ref:{include_hits[0]}")
 
         if svc_filter:
             asset_svc = normalize_search_text(asset.nom_ccos)
@@ -7528,11 +7540,23 @@ def build_quick_lookup_candidates(rule_key, service_hint, location_hint, query_t
                 continue
             reasons.append('ubicacion')
 
-        # Para filtros por texto, exige que TODOS los tokens aparezcan (estilo Excel contiene).
-        if query_tokens and not _token_matches_all(query_tokens, blob):
-            continue
+        subtype_blob = normalize_search_text(' '.join([
+            str(asset.desc_subtiac or ''),
+            str(asset.nom_fam or ''),
+            str(asset.nom or ''),
+        ]))
+        if subtype_tokens:
+            subtype_ratio, subtype_matches = _token_match_ratio(subtype_tokens, subtype_blob)
+            if subtype_ratio < 0.34:
+                continue
+            reasons.append(f"subtipo:{'/'.join(subtype_matches[:3])}")
+
+        # Para descripcion y tecnico: usa cobertura parcial para no dejar pocos activos.
         if query_tokens:
-            reasons.append('descripcion')
+            desc_ratio, desc_matches = _token_match_ratio(query_tokens, blob)
+            if desc_ratio < 0.34:
+                continue
+            reasons.append(f"descripcion:{'/'.join(desc_matches[:3])}")
 
         technical_blob = normalize_search_text(' '.join([
             str(asset.nom_marca or ''),
@@ -7540,11 +7564,18 @@ def build_quick_lookup_candidates(rule_key, service_hint, location_hint, query_t
             str(asset.serie or ''),
             str(asset.ref or ''),
             str(asset.c_act or ''),
+            str(asset.nom or ''),
+            str(asset.desc_subtiac or ''),
         ]))
-        if technical_tokens and not _token_matches_all(technical_tokens, technical_blob):
-            continue
         if technical_tokens:
-            reasons.append('tecnico')
+            tech_ratio, tech_matches = _token_match_ratio(technical_tokens, technical_blob)
+            if tech_ratio < 0.34:
+                continue
+            reasons.append(f"tecnico:{'/'.join(tech_matches[:3])}")
+
+        # Cuando no hay filtros de texto y solo se define tipo, incluye todo el tipo.
+        if not reasons:
+            continue
 
         # Orden simple: mas filtros cumplidos primero, luego costo y codigo.
         score = float(len(reasons))
@@ -7655,11 +7686,12 @@ def asset_life_sheet_quick_lookup():
     category_key = str(payload.get('category_key') or '').strip()
     service_hint = str(payload.get('service_hint') or '').strip()
     location_hint = str(payload.get('location_hint') or '').strip()
+    subtype_text = str(payload.get('subtype_text') or '').strip()
     query_text = str(payload.get('query_text') or '').strip()
     technical_text = str(payload.get('technical_text') or '').strip()
     limit = parse_int(payload.get('limit'), default=30) or 30
 
-    if not any([category_key, service_hint, location_hint, query_text, technical_text]):
+    if not any([category_key, service_hint, location_hint, subtype_text, query_text, technical_text]):
         return jsonify({'error': 'Debes indicar al menos un criterio de busqueda'}), 400
 
     candidates, pool_size = build_quick_lookup_candidates(
@@ -7668,6 +7700,7 @@ def asset_life_sheet_quick_lookup():
         location_hint=location_hint,
         query_text=query_text,
         technical_text=technical_text,
+        subtype_text=subtype_text,
         limit=limit,
     )
     rule = get_assist_rule(category_key) if category_key else None
@@ -7677,6 +7710,7 @@ def asset_life_sheet_quick_lookup():
             'category_label': (rule.get('label') if rule else ''),
             'service_hint': service_hint,
             'location_hint': location_hint,
+            'subtype_text': subtype_text,
             'query_text': query_text,
             'technical_text': technical_text,
             'not_found_only': True,

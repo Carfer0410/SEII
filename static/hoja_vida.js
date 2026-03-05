@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const quickCategoryInput = document.getElementById('lifeQuickCategory');
   const quickServiceInput = document.getElementById('lifeQuickServiceHint');
   const quickLocationInput = document.getElementById('lifeQuickLocationHint');
+  const quickSubtypeInput = document.getElementById('lifeQuickSubtypeText');
   const quickQueryInput = document.getElementById('lifeQuickQueryText');
   const quickTechnicalInput = document.getElementById('lifeQuickTechnicalText');
   const quickLimitInput = document.getElementById('lifeQuickLimit');
@@ -230,6 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
     quickCandidatesEl.innerHTML = `
       <div class="life-assist-summary">
         <div><strong>Tipo:</strong> ${App.escapeHtml(analysis.category_label || 'Sin tipo especifico')}</div>
+        <div><strong>Subtipo:</strong> ${App.escapeHtml(analysis.subtype_text || '-')}</div>
         <div><strong>Pool no encontrados:</strong> ${App.escapeHtml(String(analysis.not_found_pool_size || 0))}</div>
         <div><strong>Candidatos devueltos:</strong> ${App.escapeHtml(String(analysis.returned_candidates || 0))}</div>
       </div>
@@ -267,11 +269,12 @@ document.addEventListener('DOMContentLoaded', () => {
       category_key: String(quickCategoryInput?.value || '').trim(),
       service_hint: String(quickServiceInput?.value || '').trim(),
       location_hint: String(quickLocationInput?.value || '').trim(),
+      subtype_text: String(quickSubtypeInput?.value || '').trim(),
       query_text: String(quickQueryInput?.value || '').trim(),
       technical_text: String(quickTechnicalInput?.value || '').trim(),
       limit: Number(quickLimitInput?.value || 30),
     };
-    if (!body.category_key && !body.service_hint && !body.location_hint && !body.query_text && !body.technical_text) {
+    if (!body.category_key && !body.service_hint && !body.location_hint && !body.subtype_text && !body.query_text && !body.technical_text) {
       App.setStatus(quickStatusEl, 'Indica al menos un criterio para buscar.', true);
       return;
     }

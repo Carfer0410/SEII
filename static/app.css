@@ -2613,6 +2613,7 @@ tbody tr:hover {
   font-size: 13px;
   font-weight: 600;
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
 }
 
@@ -2624,6 +2625,58 @@ tbody tr:hover {
   padding: 12px;
   font-weight: 600;
   text-align: center;
+}
+
+.life-assist-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.life-assist-table th,
+.life-assist-table td {
+  padding: 6px 7px;
+  font-size: 11px;
+  line-height: 1.25;
+  vertical-align: middle;
+}
+
+.life-assist-table th {
+  background: #edf6fc;
+  color: #1f5778;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.life-assist-table tbody tr:nth-child(even) {
+  background: #f8fcff;
+}
+
+.life-assist-table th:nth-child(1),
+.life-assist-table td:nth-child(1) { width: 4%; text-align: center; }
+.life-assist-table th:nth-child(2),
+.life-assist-table td:nth-child(2) { width: 10%; }
+.life-assist-table th:nth-child(3),
+.life-assist-table td:nth-child(3) { width: 28%; }
+.life-assist-table th:nth-child(4),
+.life-assist-table td:nth-child(4) { width: 15%; }
+.life-assist-table th:nth-child(5),
+.life-assist-table td:nth-child(5) { width: 18%; }
+.life-assist-table th:nth-child(6),
+.life-assist-table td:nth-child(6) { width: 9%; text-align: center; }
+.life-assist-table th:nth-child(7),
+.life-assist-table td:nth-child(7) { width: 7%; text-align: center; }
+.life-assist-table th:nth-child(8),
+.life-assist-table td:nth-child(8) { width: 9%; text-align: center; }
+
+.life-assist-table .mini-btn {
+  min-width: 0;
+  min-height: 24px;
+  height: 24px;
+  padding: 0 7px;
+  font-size: 10px;
+  border-radius: 6px;
 }
 
 .life-sheet-empty {
@@ -3078,6 +3131,10 @@ tbody tr:hover {
   }
 
   .life-assist-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .life-assist-summary {
     grid-template-columns: 1fr;
   }
 
