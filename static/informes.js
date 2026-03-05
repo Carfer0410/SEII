@@ -219,7 +219,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadActiveAccountingBaseInfo() {
     if (!accountingActiveBaseInfo) return;
-    const qp = accountingPeriodParams();
+    const qp = accountingBasePeriodParams();
     if (!qp.month || !qp.year) {
       accountingActiveBaseInfo.innerHTML = '<div class="import-current-base-empty">Selecciona mes y año para visualizar la base activa.</div>';
       return;
@@ -396,10 +396,12 @@ document.addEventListener('DOMContentLoaded', () => {
     loadOverridesSummary().catch((err) => App.setStatus(accountingBaseStatusEl, err.message, true));
   });
   accountingBaseMonthInput?.addEventListener('change', () => {
-    loadAccountingBases().catch((err) => App.setStatus(accountingBaseStatusEl, err.message, true));
+    Promise.all([loadAccountingBases(), loadActiveAccountingBaseInfo()])
+      .catch((err) => App.setStatus(accountingBaseStatusEl, err.message, true));
   });
   accountingBaseYearInput?.addEventListener('change', () => {
-    loadAccountingBases().catch((err) => App.setStatus(accountingBaseStatusEl, err.message, true));
+    Promise.all([loadAccountingBases(), loadActiveAccountingBaseInfo()])
+      .catch((err) => App.setStatus(accountingBaseStatusEl, err.message, true));
   });
 
   loadAccountingHistory().catch((err) => App.setStatus(accountingStatusEl, err.message, true));
