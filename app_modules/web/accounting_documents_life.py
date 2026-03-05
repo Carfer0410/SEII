@@ -502,7 +502,7 @@ def documents_create():
     doc_date = (request.form.get('doc_date') or '').strip()
     area_service = (request.form.get('area_service') or '').strip()
     radicado = (request.form.get('radicado') or '').strip()
-    uploaded_by = (request.form.get('uploaded_by') or '').strip() or 'usuario_movil'
+    uploaded_by = get_actor_username((request.form.get('uploaded_by') or '').strip() or 'usuario_movil')
 
     if not document_type:
         return jsonify({'error': 'Debes seleccionar tipo de documento'}), 400

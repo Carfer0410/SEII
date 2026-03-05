@@ -67,7 +67,7 @@ def create_run():
         period_id = int(period_id) if period_id not in (None, '') else None
     except Exception:
         period_id = None
-    created_by = (data.get('created_by') or '').strip() or 'unknown'
+    created_by = get_actor_username((data.get('created_by') or '').strip() or 'unknown')
     if not name:
         return jsonify({'error': 'Debe indicar nombre de jornada'}), 400
     if not services:
@@ -286,7 +286,7 @@ def generate_paz_y_salvo_pdf():
 
     outgoing_responsible = (data.get('outgoing_responsible') or '').strip()
     incoming_responsible = (data.get('incoming_responsible') or '').strip()
-    issued_by = (data.get('issued_by') or '').strip() or 'Responsable activos fijos'
+    issued_by = get_actor_username((data.get('issued_by') or '').strip() or 'Responsable activos fijos')
     observations = (data.get('observations') or '').strip()
     report_date = (data.get('report_date') or '').strip()
     if report_date:
@@ -479,7 +479,7 @@ def close_run(run_id):
         return jsonify({'error': 'La jornada ya esta cerrada'}), 400
 
     data = request.get_json() or {}
-    user = (data.get('user') or '').strip() or 'system_close'
+    user = get_actor_username((data.get('user') or '').strip() or 'system_close')
     now_iso_value = now_iso()
 
     q = Asset.query
@@ -535,7 +535,7 @@ def cancel_run(run_id):
 
     data = request.get_json() or {}
     reason = (data.get('reason') or '').strip()
-    user = (data.get('user') or '').strip() or 'usuario_movil'
+    user = get_actor_username((data.get('user') or '').strip() or 'usuario_movil')
     if not reason:
         return jsonify({'error': 'Debes indicar el motivo de anulacion de la jornada'}), 400
 

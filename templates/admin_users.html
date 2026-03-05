@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% set title = "Administracion de usuarios" %}
+{% set subtitle = "Gestion de cuentas internas para trazabilidad institucional." %}
+
+{% block content %}
+  <div class="stack admin-users-screen module-screen">
+    <section class="card admin-users-create-card">
+      <div class="admin-users-head">
+        <h3>Nuevo usuario</h3>
+        <p>Crea cuentas internas para mantener trazabilidad por funcionario.</p>
+      </div>
+      <div class="admin-users-create-grid">
+        <div class="admin-field">
+          <label for="newUsername">Usuario</label>
+          <input id="newUsername" type="text" placeholder="ej. activos.fijos2" />
+        </div>
+        <div class="admin-field">
+          <label for="newFullName">Nombre completo</label>
+          <input id="newFullName" type="text" placeholder="Nombre del funcionario" />
+        </div>
+        <div class="admin-field">
+          <label for="newEmail">Correo (opcional)</label>
+          <input id="newEmail" type="email" placeholder="correo@institucion.gov.co" />
+        </div>
+        <div class="admin-field">
+          <label for="newPassword">Contraseña inicial</label>
+          <input id="newPassword" type="password" placeholder="Minimo 6 caracteres" />
+        </div>
+      </div>
+      <div class="admin-users-create-actions">
+        <label class="admin-check"><input id="newIsAdmin" type="checkbox" /> Administrador</label>
+        <button id="createUserBtn">Crear usuario</button>
+      </div>
+      <div id="adminStatus" class="status"></div>
+    </section>
+
+    <section class="card admin-users-list-card">
+      <div class="admin-users-head">
+        <h3>Usuarios registrados</h3>
+      </div>
+      <div class="admin-users-table-wrap">
+        <table id="usersTable" class="admin-users-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Usuario</th>
+              <th>Nombre</th>
+              <th>Correo</th>
+              <th>Admin</th>
+              <th>Activo</th>
+              <th>Ultimo acceso</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='admin_users.js') }}"></script>
+{% endblock %}

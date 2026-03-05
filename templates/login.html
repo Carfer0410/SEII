@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ingreso · SEII</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}" />
+  </head>
+  <body class="auth-body">
+    <main class="auth-wrap">
+      <section class="auth-card">
+        <div class="auth-brand">
+          <img src="{{ url_for('logo_file') }}" alt="Logo institucion" class="auth-logo" />
+          <div>
+            <h1>SEII</h1>
+            <p>Hospital Francisco de Paula Santander</p>
+          </div>
+        </div>
+
+        <div class="auth-copy">
+          <h2>Iniciar sesion</h2>
+          <p>Accede al sistema institucional de inventario y conciliacion.</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="auth-alerts">
+              {% for category, message in messages %}
+                <div class="auth-alert {{ 'error' if category == 'error' else 'info' }}">{{ message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        <form method="post" action="{{ url_for('login_submit') }}" class="auth-form" autocomplete="on">
+          <input type="hidden" name="next" value="{{ next_url or '' }}" />
+          <label for="username">Usuario</label>
+          <input id="username" name="username" type="text" required placeholder="Ingresa tu usuario" autofocus />
+
+          <label for="password">Contraseña</label>
+          <input id="password" name="password" type="password" required placeholder="Ingresa tu contraseña" />
+
+          <button type="submit" class="auth-submit">Entrar al sistema</button>
+        </form>
+
+        <div class="auth-foot">
+          <span>SEII · Sistema Especializado de Inventario Institucional</span>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

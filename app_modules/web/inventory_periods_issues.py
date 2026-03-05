@@ -138,7 +138,7 @@ def cancel_period(period_id):
 
     data = request.get_json() or {}
     reason = (data.get('reason') or '').strip()
-    user = (data.get('user') or '').strip() or 'usuario_movil'
+    user = get_actor_username((data.get('user') or '').strip() or 'usuario_movil')
     if not reason:
         return jsonify({'error': 'Debes indicar el motivo de anulacion del periodo'}), 400
 
@@ -811,7 +811,7 @@ def transfers_create_from_issue():
 
     target_service = str(data.get('target_service') or '').strip()
     target_responsible = str(data.get('target_responsible') or '').strip()
-    requested_by = str(data.get('requested_by') or '').strip() or 'coordinador_activos'
+    requested_by = get_actor_username(str(data.get('requested_by') or '').strip() or 'coordinador_activos')
     justification = str(data.get('justification') or '').strip() or (issue.description or '')
 
     if not target_service:
@@ -900,7 +900,7 @@ def transfers_execute(transfer_id):
         return jsonify({'error': 'Activo no encontrado'}), 404
 
     data = request.get_json() or {}
-    executed_by = str(data.get('executed_by') or '').strip() or 'equipo_activos'
+    executed_by = get_actor_username(str(data.get('executed_by') or '').strip() or 'equipo_activos')
     execution_notes = str(data.get('execution_notes') or '').strip()
     now_value = now_iso()
 

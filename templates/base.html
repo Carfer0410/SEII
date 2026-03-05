@@ -16,7 +16,15 @@
             <p>SEII · Sistema Especializado de Inventario Institucional</p>
           </div>
         </div>
-        <div class="app-pill">SEII</div>
+        <div class="nav-user-block">
+          <div class="app-pill">SEII</div>
+          {% if current_user %}
+            <div class="user-pill">{{ current_user.full_name or current_user.username }}</div>
+            <form method="post" action="{{ url_for('logout') }}" class="logout-form">
+              <button type="submit" class="logout-btn">Cerrar sesion</button>
+            </form>
+          {% endif %}
+        </div>
       </div>
       <nav class="menu menu-top" aria-label="Navegacion principal">
         <a class="{{ 'active' if request.path == '/' else '' }}" href="{{ url_for('index') }}">Inicio</a>
@@ -26,6 +34,9 @@
         <a class="{{ 'active' if request.path == '/inventario' else '' }}" href="{{ url_for('inventario_page') }}">Inventario y escaneo</a>
         <a class="{{ 'active' if request.path == '/bajas' else '' }}" href="{{ url_for('bajas_page') }}">Bajas</a>
         <a class="{{ 'active' if request.path == '/documentos' else '' }}" href="{{ url_for('documentos_page') }}">Documentos</a>
+        {% if current_user and current_user.is_admin %}
+        <a class="{{ 'active' if request.path == '/admin/usuarios' else '' }}" href="{{ url_for('admin_users_page') }}">Usuarios</a>
+        {% endif %}
         <a class="{{ 'active' if request.path == '/informes' else '' }}" href="{{ url_for('informes_page') }}">Informes</a>
         <a class="{{ 'active' if request.path == '/hoja_vida' else '' }}" href="{{ url_for('hoja_vida_page') }}">Hoja de vida</a>
         <a class="{{ 'active' if request.path == '/novedades' else '' }}" href="{{ url_for('novedades_page') }}">Novedades</a>
@@ -42,6 +53,15 @@
           <p>{{ subtitle or '' }}</p>
         </header>
         <section>
+          {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+              <div class="flash-wrap">
+                {% for category, message in messages %}
+                  <div class="status {{ 'err' if category == 'error' else '' }}">{{ message }}</div>
+                {% endfor %}
+              </div>
+            {% endif %}
+          {% endwith %}
           {% block content %}{% endblock %}
         </section>
       </div>

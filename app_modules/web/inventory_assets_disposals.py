@@ -77,7 +77,7 @@ def update_asset_classification(asset_id):
     disposal_reason = (data.get('disposal_reason') or '').strip()
     period_id = parse_int(data.get('period_id'))
     run_id = parse_int(data.get('run_id'))
-    user = (data.get('user') or '').strip() or 'usuario_movil'
+    user = get_actor_username((data.get('user') or '').strip() or 'usuario_movil')
     if not classification:
         return jsonify({'error': 'Debe enviar la clasificacion'}), 400
 
@@ -154,7 +154,7 @@ def update_asset_service(asset_id):
 
     data = request.get_json() or {}
     service = (data.get('service') or '').strip()
-    user = (data.get('user') or '').strip() or 'usuario_movil'
+    user = get_actor_username((data.get('user') or '').strip() or 'usuario_movil')
     run_id = data.get('run_id')
     period_id = data.get('period_id')
     auto_transfer = parse_bool(data.get('auto_transfer'), default=False)
@@ -308,12 +308,17 @@ def scan():
     ensure_db()
     data = request.get_json() or {}
     code = data.get('code')
-    user = data.get('user') or 'unknown'
+    user = get_actor_username(data.get('user') or 'unknown')
     run_id = data.get('run_id')
     if not code:
         return jsonify({'error': 'No code provided'}), 400
     scanned_code = normalize_scan_code(code)
-    asset, matched_by = get_asset_by_code(scanned_code)
+    try:
+        asset, matched_by = get_asset_by_code(scanned_code)
+    except Exception as exc:
+        app.logger.exception('[SCAN] Error en get_asset_by_code para "%s": %s', scanned_code, exc)
+        asset = get_asset_by_c_act_strict(scanned_code)
+        matched_by = 'C_ACT' if asset else None
     if not asset:
         return jsonify({'found': False, 'scanned_code': scanned_code}), 200
 
@@ -1022,7 +1027,7 @@ def create_disposal():
     data = request.get_json() or {}
     code = data.get('code')
     reason = (data.get('reason') or '').strip()
-    requested_by = (data.get('requested_by') or '').strip() or 'unknown'
+    requested_by = get_actor_username((data.get('requested_by') or '').strip() or 'unknown')
     period_id = parse_int(data.get('period_id'))
     if not code:
         return jsonify({'error': 'Debe enviar codigo de activo'}), 400
@@ -1074,7 +1079,7 @@ def update_disposal(disposal_id):
     new_status = (data.get('status') or '').strip()
     reason_raw = data.get('reason', None)
     review_notes = (data.get('review_notes') or '').strip() or None
-    reviewed_by = (data.get('reviewed_by') or '').strip() or 'unknown'
+    reviewed_by = get_actor_username((data.get('reviewed_by') or '').strip() or 'unknown')
     type_override = data.get('type_override', None)
     allowed = {'Pendiente baja', 'Aprobada para baja', 'Rechazada'}
     if new_status and new_status not in allowed:
@@ -1117,7 +1122,7 @@ def delete_disposal(disposal_id):
     if asset:
         asset.estado_inventario = 'Pendiente verificacion'
         asset.fecha_verificacion = now_iso()
-        asset.usuario_verificador = 'usuario_movil'
+        asset.usuario_verificador = get_actor_username('usuario_movil')
 
     db.session.delete(disposal)
     db.session.commit()

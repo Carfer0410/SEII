@@ -636,7 +636,7 @@ def upload_accounting_monthly_base():
     if not f:
         return jsonify({'error': 'Debes adjuntar el archivo base mensual'}), 400
     month, year = normalize_month_year(request.form.get('month'), request.form.get('year'))
-    uploaded_by = str(request.form.get('uploaded_by') or '').strip()
+    uploaded_by = get_actor_username(str(request.form.get('uploaded_by') or '').strip())
     period_label = f"{MONTH_LABELS_ES.get(month, str(month))} {year}"
 
     source_name = sanitize_filename(os.path.basename(str(f.filename or '').strip() or f'base_{year}_{month:02d}.xlsx'))

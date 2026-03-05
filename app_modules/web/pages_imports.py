@@ -1,5 +1,200 @@
 from ..core.foundation import *
 
+@app.route('/login', methods=['GET'])
+def login_page():
+    ensure_db()
+    next_url = str(request.args.get('next') or '').strip()
+    return render_template('login.html', next_url=next_url)
+
+
+@app.route('/login', methods=['POST'])
+def login_submit():
+    ensure_db()
+    username = str(request.form.get('username') or '').strip()
+    password = str(request.form.get('password') or '')
+    next_url = str(request.form.get('next') or '').strip()
+
+    if not username or not password:
+        flash('Debes ingresar usuario y contraseña.', 'error')
+        return redirect(url_for('login_page', next=next_url))
+
+    user = UserAccount.query.filter(db.func.lower(UserAccount.username) == username.lower()).first()
+    if not user or not user.check_password(password) or not user.is_active:
+        flash('Credenciales invalidas. Verifica usuario y contraseña.', 'error')
+        return redirect(url_for('login_page', next=next_url))
+
+    user.last_login_at = now_iso()
+    db.session.commit()
+    login_user_session(user)
+
+    if next_url and next_url.startswith('/') and not next_url.startswith('//') and '/login' not in next_url:
+        return redirect(next_url)
+    return redirect(url_for('index'))
+
+
+@app.route('/logout', methods=['POST', 'GET'])
+def logout():
+    logout_user_session()
+    flash('Sesion cerrada correctamente.', 'info')
+    return redirect(url_for('login_page'))
+
+
+@app.route('/admin/usuarios', methods=['GET'])
+def admin_users_page():
+    ensure_db()
+    gate = require_admin_or_403()
+    if gate:
+        return gate
+    return render_template('admin_users.html')
+
+
+@app.route('/admin/users/api', methods=['GET'])
+def admin_users_list():
+    ensure_db()
+    gate = require_admin_or_403()
+    if gate:
+        return gate
+    rows = UserAccount.query.order_by(UserAccount.id.asc()).all()
+    return jsonify({'items': [r.to_dict() for r in rows]})
+
+
+@app.route('/admin/users/api', methods=['POST'])
+def admin_users_create():
+    ensure_db()
+    gate = require_admin_or_403()
+    if gate:
+        return gate
+    data = request.get_json() or {}
+    username = str(data.get('username') or '').strip()
+    full_name = str(data.get('full_name') or '').strip()
+    email = str(data.get('email') or '').strip()
+    password = str(data.get('password') or '')
+    is_admin = bool(data.get('is_admin'))
+
+    if not username:
+        return jsonify({'error': 'Debes ingresar el nombre de usuario'}), 400
+    if len(username) < 3:
+        return jsonify({'error': 'El usuario debe tener al menos 3 caracteres'}), 400
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+', username):
+        return jsonify({'error': 'El usuario solo puede contener letras, numeros, punto, guion y guion bajo'}), 400
+    if len(password) < 6:
+        return jsonify({'error': 'La contraseña debe tener al menos 6 caracteres'}), 400
+    if UserAccount.query.filter(db.func.lower(UserAccount.username) == username.lower()).first():
+        return jsonify({'error': 'Ya existe un usuario con ese nombre'}), 400
+    if email and UserAccount.query.filter(db.func.lower(UserAccount.email) == email.lower()).first():
+        return jsonify({'error': 'Ya existe un usuario con ese correo'}), 400
+
+    row = UserAccount(
+        username=username,
+        full_name=full_name or username,
+        email=(email or None),
+        is_admin=is_admin,
+        is_active=True,
+        created_at=now_iso(),
+    )
+    row.set_password(password)
+    db.session.add(row)
+    db.session.commit()
+    return jsonify({'user': row.to_dict()})
+
+
+@app.route('/admin/users/api/<int:user_id>', methods=['PATCH'])
+def admin_users_update(user_id):
+    ensure_db()
+    gate = require_admin_or_403()
+    if gate:
+        return gate
+    row = UserAccount.query.get(user_id)
+    if not row:
+        return jsonify({'error': 'Usuario no encontrado'}), 404
+    data = request.get_json() or {}
+
+    full_name = str(data.get('full_name') or '').strip()
+    email = str(data.get('email') or '').strip()
+    is_admin = data.get('is_admin')
+    is_active = data.get('is_active')
+    password = str(data.get('password') or '')
+
+    if email:
+        duplicate = UserAccount.query.filter(
+            db.func.lower(UserAccount.email) == email.lower(),
+            UserAccount.id != row.id,
+        ).first()
+        if duplicate:
+            return jsonify({'error': 'Ese correo ya esta registrado en otro usuario'}), 400
+        row.email = email
+    else:
+        row.email = None
+
+    row.full_name = full_name or row.username
+
+    if is_admin is not None:
+        next_admin = bool(is_admin)
+        if not next_admin and row.is_admin:
+            active_admins = UserAccount.query.filter_by(is_admin=True, is_active=True).count()
+            if active_admins <= 1:
+                return jsonify({'error': 'Debe existir al menos un administrador activo'}), 400
+        row.is_admin = next_admin
+
+    if is_active is not None:
+        next_active = bool(is_active)
+        current = get_current_user()
+        if current and int(current.id) == int(row.id) and not next_active:
+            return jsonify({'error': 'No puedes desactivar tu propio usuario'}), 400
+        if row.is_admin and not next_active:
+            active_admins = UserAccount.query.filter_by(is_admin=True, is_active=True).count()
+            if active_admins <= 1:
+                return jsonify({'error': 'Debe existir al menos un administrador activo'}), 400
+        row.is_active = next_active
+
+    if password:
+        if len(password) < 6:
+            return jsonify({'error': 'La contraseña debe tener al menos 6 caracteres'}), 400
+        row.set_password(password)
+
+    db.session.commit()
+    return jsonify({'user': row.to_dict()})
+
+
+@app.route('/admin/users/api/<int:user_id>/toggle_active', methods=['POST'])
+def admin_users_toggle_active(user_id):
+    ensure_db()
+    gate = require_admin_or_403()
+    if gate:
+        return gate
+    row = UserAccount.query.get(user_id)
+    if not row:
+        return jsonify({'error': 'Usuario no encontrado'}), 404
+    current = get_current_user()
+    if current and int(current.id) == int(row.id) and row.is_active:
+        return jsonify({'error': 'No puedes desactivar tu propio usuario'}), 400
+    if row.is_admin and row.is_active:
+        active_admins = UserAccount.query.filter_by(is_admin=True, is_active=True).count()
+        if active_admins <= 1:
+            return jsonify({'error': 'Debe existir al menos un administrador activo'}), 400
+    row.is_active = not bool(row.is_active)
+    db.session.commit()
+    return jsonify({'user': row.to_dict()})
+
+
+@app.route('/admin/users/api/<int:user_id>/reset_password', methods=['POST'])
+def admin_users_reset_password(user_id):
+    ensure_db()
+    gate = require_admin_or_403()
+    if gate:
+        return gate
+    row = UserAccount.query.get(user_id)
+    if not row:
+        return jsonify({'error': 'Usuario no encontrado'}), 404
+    data = request.get_json() or {}
+    new_password = str(data.get('new_password') or '').strip()
+    if len(new_password) < 6:
+        return jsonify({'error': 'La nueva contraseña debe tener al menos 6 caracteres'}), 400
+    row.set_password(new_password)
+    db.session.commit()
+    return jsonify({'ok': True, 'user': row.to_dict()})
+
+
 @app.route('/')
 def index():
     ensure_db()
@@ -393,7 +588,15 @@ def get_asset_by_code(code):
         Asset.raw_row_json.contains(scan_code)
     ).limit(500).all()
     for row in candidates:
-        payload = asset_raw_payload(row)
+        payload = {}
+        try:
+            raw = getattr(row, 'raw_row_json', None)
+            if raw:
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    payload = parsed
+        except Exception:
+            payload = {}
         for key in keys:
             if scan_code_equals(payload.get(key), scan_code):
                 return row, key

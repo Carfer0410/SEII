@@ -19,7 +19,7 @@ from threading import Lock
 from functools import lru_cache
 from copy import copy
 from decimal import Decimal, ROUND_HALF_UP
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from io import BytesIO
 from zoneinfo import ZoneInfo
 
@@ -49,7 +49,7 @@ from openpyxl.utils.units import pixels_to_EMU
 from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, OneCellAnchor
 from openpyxl.drawing.xdr import XDRPositiveSize2D
 from PIL import Image as PILImage
-from flask import Flask, render_template, request, jsonify, send_file, has_app_context
+from flask import Flask, render_template, request, jsonify, send_file, has_app_context, session, redirect, url_for, flash, g
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -63,6 +63,7 @@ from reportlab.graphics.charts.piecharts import Pie
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from sqlalchemy import UniqueConstraint, text
+from werkzeug.security import generate_password_hash, check_password_hash
 from xml.sax.saxutils import escape
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -455,6 +456,8 @@ ACCOUNTING_REPORT_STRUCTURE = [
 
 app = Flask(__name__, template_folder=TEMPLATES_DIR, static_folder=STATIC_DIR)
 CORS(app)
+app.config['SECRET_KEY'] = os.getenv('SEII_SECRET_KEY', 'seii-dev-secret-change-me')
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=12)
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{DB_PATH}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
@@ -672,6 +675,38 @@ class SystemMeta(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     meta_key = db.Column(db.String, unique=True, nullable=False)
     meta_value = db.Column(db.String)
+
+
+class UserAccount(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String, unique=True, nullable=False)
+    full_name = db.Column(db.String)
+    email = db.Column(db.String, unique=True)
+    password_hash = db.Column(db.String, nullable=False)
+    is_admin = db.Column(db.Boolean, nullable=False, default=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.String, nullable=False)
+    last_login_at = db.Column(db.String)
+
+    def set_password(self, raw_password):
+        self.password_hash = generate_password_hash(str(raw_password or ''))
+
+    def check_password(self, raw_password):
+        return check_password_hash(self.password_hash or '', str(raw_password or ''))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'username': self.username,
+            'full_name': self.full_name or '',
+            'email': self.email or '',
+            'is_admin': bool(getattr(self, 'is_admin', False)),
+            'is_active': bool(self.is_active),
+            'created_at': self.created_at,
+            'created_at_local': format_dt_local(self.created_at),
+            'last_login_at': self.last_login_at,
+            'last_login_at_local': format_dt_local(self.last_login_at),
+        }
 
 
 class GeneratedReport(db.Model):
@@ -915,6 +950,8 @@ def ensure_db():
         backfill_asset_life_sheet_fields()
         assign_legacy_period_to_old_runs()
         assign_legacy_period_to_old_disposals()
+        ensure_default_user()
+        ensure_admin_user_exists()
     else:
         with app.app_context():
             db.create_all()
@@ -922,6 +959,142 @@ def ensure_db():
             backfill_asset_life_sheet_fields()
             assign_legacy_period_to_old_runs()
             assign_legacy_period_to_old_disposals()
+            ensure_default_user()
+            ensure_admin_user_exists()
+
+
+def ensure_default_user():
+    if UserAccount.query.count() > 0:
+        return
+    username = str(os.getenv('SEII_DEFAULT_USER', 'admin')).strip() or 'admin'
+    default_password = str(os.getenv('SEII_DEFAULT_PASSWORD', 'admin123'))
+    full_name = str(os.getenv('SEII_DEFAULT_FULLNAME', 'Administrador SEII')).strip() or 'Administrador SEII'
+    row = UserAccount(
+        username=username,
+        full_name=full_name,
+        email=None,
+        is_admin=True,
+        is_active=True,
+        created_at=now_iso(),
+    )
+    row.set_password(default_password)
+    db.session.add(row)
+    db.session.commit()
+    app.logger.warning('[AUTH] Usuario inicial creado: %s', username)
+
+
+def ensure_admin_user_exists():
+    admin_exists = UserAccount.query.filter_by(is_admin=True, is_active=True).count() > 0
+    if admin_exists:
+        return
+    first_user = UserAccount.query.order_by(UserAccount.id.asc()).first()
+    if not first_user:
+        return
+    first_user.is_admin = True
+    if not str(first_user.created_at or '').strip():
+        first_user.created_at = now_iso()
+    db.session.commit()
+    app.logger.warning('[AUTH] Se promovio a administrador inicial: %s', first_user.username)
+
+
+def get_current_user():
+    cached = getattr(g, '_current_user', None)
+    if cached is not None:
+        return cached
+    user_id = session.get('user_id')
+    if not user_id:
+        g._current_user = None
+        return None
+    row = UserAccount.query.get(int(user_id))
+    if not row or not row.is_active:
+        session.clear()
+        g._current_user = None
+        return None
+    g._current_user = row
+    return row
+
+
+def get_actor_username(fallback='system'):
+    user = get_current_user()
+    if user and str(user.username or '').strip():
+        return str(user.username).strip()
+    fb = str(fallback or '').strip()
+    return fb or 'system'
+
+
+def is_current_user_admin():
+    user = get_current_user()
+    return bool(user and getattr(user, 'is_admin', False))
+
+
+def require_admin_or_403():
+    if is_current_user_admin():
+        return None
+    if request.path.startswith('/admin/users/api'):
+        return jsonify({'error': 'Acceso restringido a administradores'}), 403
+    accept = str(request.headers.get('Accept') or '').lower()
+    if request.method == 'GET' and request.path.startswith('/admin/') and 'text/html' in accept:
+        flash('No tienes permisos para acceder al panel de administracion.', 'error')
+        return redirect(url_for('index'))
+    return jsonify({'error': 'Acceso restringido a administradores'}), 403
+
+
+def login_user_session(user):
+    session.permanent = True
+    session['user_id'] = int(user.id)
+    session['username'] = str(user.username or '')
+    session['login_at'] = now_iso()
+
+
+def logout_user_session():
+    session.clear()
+
+
+AUTH_PAGE_PATHS = {
+    '/',
+    '/inventario',
+    '/jornadas',
+    '/formatos',
+    '/bajas',
+    '/dashboard',
+    '/informes',
+    '/cronograma',
+    '/novedades',
+    '/hoja_vida',
+    '/documentos',
+    '/admin/usuarios',
+}
+
+
+AUTH_EXEMPT_ENDPOINTS = {
+    'static',
+    'login_page',
+    'login_submit',
+    'logout',
+    'logo_file',
+}
+
+
+@app.before_request
+def enforce_login():
+    endpoint = request.endpoint or ''
+    if endpoint in AUTH_EXEMPT_ENDPOINTS or endpoint.startswith('static'):
+        return None
+    user = get_current_user()
+    if user:
+        g.current_user = user
+        return None
+    if request.method == 'GET' and request.path in AUTH_PAGE_PATHS:
+        next_url = request.full_path if request.query_string else request.path
+        if next_url.endswith('?'):
+            next_url = next_url[:-1]
+        return redirect(url_for('login_page', next=next_url))
+    return jsonify({'error': 'Debes iniciar sesion', 'auth_required': True}), 401
+
+
+@app.context_processor
+def inject_auth_context():
+    return {'current_user': get_current_user()}
 
 
 def invalidate_accounting_report_cache():
@@ -1042,6 +1215,16 @@ def ensure_schema_updates():
         disposal_columns = {row[1] for row in conn.execute(text('PRAGMA table_info(asset_disposal)')).fetchall()}
         if 'period_id' not in disposal_columns:
             conn.execute(text('ALTER TABLE asset_disposal ADD COLUMN period_id INTEGER'))
+
+        user_columns = {row[1] for row in conn.execute(text('PRAGMA table_info(user_account)')).fetchall()}
+        if 'is_admin' not in user_columns:
+            conn.execute(text('ALTER TABLE user_account ADD COLUMN is_admin BOOLEAN DEFAULT 0'))
+        if 'is_active' not in user_columns:
+            conn.execute(text('ALTER TABLE user_account ADD COLUMN is_active BOOLEAN DEFAULT 1'))
+        if 'created_at' not in user_columns:
+            conn.execute(text("ALTER TABLE user_account ADD COLUMN created_at VARCHAR DEFAULT ''"))
+        if 'last_login_at' not in user_columns:
+            conn.execute(text('ALTER TABLE user_account ADD COLUMN last_login_at VARCHAR'))
 
 
 def assign_legacy_period_to_old_runs():
