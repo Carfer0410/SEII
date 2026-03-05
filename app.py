@@ -13,6 +13,8 @@ import tempfile
 import zipfile
 import unicodedata
 import json
+import re
+from difflib import SequenceMatcher
 from threading import Lock
 from functools import lru_cache
 from copy import copy
@@ -90,6 +92,16 @@ CODIFICACION_CANDIDATES = [
 TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates')
 STATIC_DIR = os.path.join(BASE_DIR, 'static')
 DISPOSAL_TYPE_KEYS = ['BIOMEDICO', 'MUEBLE Y ENSER', 'INDUSTRIAL', 'TECNOLOGICO', 'CONTROL']
+DISPOSAL_MANUAL_TYPE_OPTIONS = [
+    'BIOMEDICO',
+    'MUEBLE Y ENSER',
+    'INDUSTRIAL',
+    'TECNOLOGICO',
+    'CONTROL - BIOMEDICO',
+    'CONTROL - MUEBLE Y ENSER',
+    'CONTROL - INDUSTRIAL',
+    'CONTROL - TECNOLOGICO',
+]
 DOCUMENT_TYPE_OPTIONS = [
     'Salida de almacen',
     'RA recepcion',
@@ -334,6 +346,66 @@ ISSUE_TYPE_LABELS = {
     'DEPRECIATION_INCONSISTENT': 'Depreciacion/vida util inconsistente',
     'CANDIDATE_DISPOSAL': 'Riesgo por baja pendiente',
 }
+ASSET_ASSIST_MAX_IMAGE_MB = 12
+ASSET_ASSIST_ALLOWED_MIME = {
+    'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/bmp'
+}
+ASSET_ASSIST_OCR_MIN_TOKEN_SIZE = 3
+ASSET_ASSIST_OCR_FIELDS = [
+    'NOM', 'NOM_FAM', 'DESC_TIAC', 'DES_SUBTIAC', 'MODELO', 'SERIE', 'REF', 'NOM_MARCA'
+]
+ASSET_ASSIST_CATEGORY_RULES = [
+    {
+        'key': 'mesa',
+        'label': 'Mesa',
+        'keywords': ['mesa', 'mesa auxiliar', 'mesita', 'escritorio', 'modulo', 'mostrador', 'puesto de trabajo'],
+        'model_labels': ['dining table', 'table', 'desk'],
+        'exclude_keywords': ['monitor', 'bomba', 'pulsoximetro', 'computador', 'cpu'],
+    },
+    {
+        'key': 'silla',
+        'label': 'Silla',
+        'keywords': ['silla', 'sillon', 'butaco', 'banqueta', 'poltrona'],
+        'model_labels': ['chair', 'couch'],
+        'exclude_keywords': ['monitor', 'bomba', 'computador', 'cpu', 'mesa'],
+    },
+    {
+        'key': 'camilla',
+        'label': 'Camilla/Cama',
+        'keywords': ['camilla', 'cama', 'cuna', 'incubadora'],
+        'model_labels': ['bed'],
+        'exclude_keywords': ['computador', 'cpu', 'teclado', 'impresora'],
+    },
+    {
+        'key': 'computo',
+        'label': 'Computo',
+        'keywords': [
+            'computador', 'cpu', 'pc', 'all in one', 'portatil', 'laptop',
+            'teclado', 'mouse', 'impresora', 'scanner', 'monitor led', 'monitor de pc'
+        ],
+        'model_labels': ['laptop', 'tv', 'keyboard', 'mouse'],
+        'exclude_keywords': [
+            'signos vitales', 'multiparametro', 'pulsoximetro', 'desfibrilador', 'bomba de infusion', 'biomedico'
+        ],
+    },
+    {
+        'key': 'biomedico',
+        'label': 'Biomedico',
+        'keywords': [
+            'bomba', 'ventilador', 'desfibrilador', 'monitor de signos', 'signos vitales',
+            'monitor multiparametro', 'multiparametro', 'oximetro', 'pulsoximetro', 'electro', 'ecografo'
+        ],
+        'model_labels': ['medical equipment', 'machine'],
+        'exclude_keywords': ['cpu', 'pc', 'computador', 'portatil', 'laptop', 'impresora', 'teclado', 'mouse'],
+    },
+    {
+        'key': 'carro',
+        'label': 'Carro/Carro de paro',
+        'keywords': ['carro', 'carretilla', 'rodable'],
+        'model_labels': ['cart'],
+        'exclude_keywords': ['computador', 'monitor', 'bomba'],
+    },
+]
 ACCOUNTING_REPORT_STRUCTURE = [
     {
         'parent_code': '1655',
@@ -1278,7 +1350,12 @@ def novedades_page():
 @app.route('/hoja_vida')
 def hoja_vida_page():
     ensure_db()
-    return render_template('hoja_vida.html')
+    categories = [
+        {'key': str(r.get('key') or ''), 'label': str(r.get('label') or '')}
+        for r in ASSET_ASSIST_CATEGORY_RULES
+        if str(r.get('key') or '').strip()
+    ]
+    return render_template('hoja_vida.html', assist_categories=categories)
 
 
 @app.route('/documentos')
@@ -2181,6 +2258,24 @@ def normalize_disposal_type_key(type_value):
     return ''
 
 
+def normalize_manual_disposal_type(type_value):
+    txt = str(type_value or '').strip().upper()
+    txt = unicodedata.normalize('NFD', txt)
+    txt = ''.join(ch for ch in txt if unicodedata.category(ch) != 'Mn')
+    txt = re.sub(r'\s+', ' ', txt).strip()
+    mapping = {
+        'BIOMEDICO': 'BIOMEDICO',
+        'MUEBLE Y ENSER': 'MUEBLE Y ENSER',
+        'INDUSTRIAL': 'INDUSTRIAL',
+        'TECNOLOGICO': 'TECNOLOGICO',
+        'CONTROL - BIOMEDICO': 'CONTROL - BIOMEDICO',
+        'CONTROL - MUEBLE Y ENSER': 'CONTROL - MUEBLE Y ENSER',
+        'CONTROL - INDUSTRIAL': 'CONTROL - INDUSTRIAL',
+        'CONTROL - TECNOLOGICO': 'CONTROL - TECNOLOGICO',
+    }
+    return mapping.get(txt, '')
+
+
 def query_disposals(service=None, status=None, period_id=None):
     q = db.session.query(AssetDisposal, Asset).join(Asset, Asset.id == AssetDisposal.asset_id)
     if service:
@@ -2192,7 +2287,8 @@ def query_disposals(service=None, status=None, period_id=None):
     rows = q.order_by(AssetDisposal.id.desc()).limit(5000).all()
     items = []
     for d, a in rows:
-        tipo = classify_asset_group(a)
+        tipo_manual = str(a.tipo_activo_cache or '').strip()
+        tipo = tipo_manual or classify_asset_group(a)
         item = {
             'id': d.id,
             'code': a.c_act or '',
@@ -5065,6 +5161,7 @@ def update_disposal(disposal_id):
     reason_raw = data.get('reason', None)
     review_notes = (data.get('review_notes') or '').strip() or None
     reviewed_by = (data.get('reviewed_by') or '').strip() or 'unknown'
+    type_override = data.get('type_override', None)
     allowed = {'Pendiente baja', 'Aprobada para baja', 'Rechazada'}
     if new_status and new_status not in allowed:
         return jsonify({'error': 'Estado de baja invalido'}), 400
@@ -5079,8 +5176,19 @@ def update_disposal(disposal_id):
         disposal.reviewed_at = now_iso()
         disposal.review_notes = review_notes
 
-    db.session.commit()
     asset = Asset.query.get(disposal.asset_id)
+    if type_override is not None:
+        normalized_type = normalize_manual_disposal_type(type_override)
+        if not normalized_type:
+            return jsonify({
+                'error': 'Tipo de reclasificacion invalido',
+                'allowed_types': DISPOSAL_MANUAL_TYPE_OPTIONS,
+            }), 400
+        if not asset:
+            return jsonify({'error': 'Activo no encontrado para reclasificar'}), 404
+        asset.tipo_activo_cache = normalized_type
+
+    db.session.commit()
     return jsonify({'disposal': disposal.to_dict(asset=asset)})
 
 
@@ -7001,6 +7109,476 @@ def _pick_first_value(payload, keys):
     return ''
 
 
+def normalize_search_text(value):
+    txt = str(value or '').strip().lower()
+    if not txt:
+        return ''
+    txt = unicodedata.normalize('NFD', txt)
+    txt = ''.join(ch for ch in txt if unicodedata.category(ch) != 'Mn')
+    txt = re.sub(r'[^a-z0-9]+', ' ', txt)
+    return re.sub(r'\s+', ' ', txt).strip()
+
+
+def tokenize_search_text(value, min_len=ASSET_ASSIST_OCR_MIN_TOKEN_SIZE):
+    txt = normalize_search_text(value)
+    if not txt:
+        return []
+    tokens = []
+    seen = set()
+    for raw in txt.split():
+        token = raw.strip()
+        if len(token) < min_len:
+            continue
+        if token.isdigit() and len(token) < 4:
+            continue
+        if token in seen:
+            continue
+        seen.add(token)
+        tokens.append(token)
+    return tokens
+
+
+def parse_detected_labels(raw_json):
+    if not raw_json:
+        return []
+    try:
+        payload = json.loads(raw_json)
+    except Exception:
+        return []
+    if not isinstance(payload, list):
+        return []
+    out = []
+    for item in payload[:15]:
+        if isinstance(item, str):
+            label = item
+            score = None
+        elif isinstance(item, dict):
+            label = item.get('label')
+            score = item.get('score')
+        else:
+            continue
+        label_txt = normalize_search_text(label)
+        if not label_txt:
+            continue
+        out.append({'label': label_txt, 'score': to_number(score)})
+    return out
+
+
+def get_assist_rule(rule_key):
+    for rule in ASSET_ASSIST_CATEGORY_RULES:
+        if rule.get('key') == rule_key:
+            return rule
+    return None
+
+
+def category_keyword_matches(text_blob, rule):
+    blob = normalize_search_text(text_blob)
+    include_hits = []
+    exclude_hits = []
+    for kw in rule.get('keywords', []):
+        token = normalize_search_text(kw)
+        if token and token in blob:
+            include_hits.append(token)
+    for kw in rule.get('exclude_keywords', []):
+        token = normalize_search_text(kw)
+        if token and token in blob:
+            exclude_hits.append(token)
+    return include_hits, exclude_hits
+
+
+def classify_asset_type_signal(ocr_tokens, ocr_text, detected_labels):
+    signal_text = ' '.join(ocr_tokens or [])
+    if ocr_text:
+        signal_text = (signal_text + ' ' + normalize_search_text(ocr_text)).strip()
+    label_tokens = [normalize_search_text(d.get('label')) for d in (detected_labels or []) if d.get('label')]
+    ranked = []
+    for rule in ASSET_ASSIST_CATEGORY_RULES:
+        points = 0.0
+        reasons = []
+        for kw in rule.get('keywords', []):
+            kw_txt = normalize_search_text(kw)
+            if kw_txt and kw_txt in signal_text:
+                points += 28.0
+                reasons.append(f"texto:{kw_txt}")
+        for kw in rule.get('exclude_keywords', []):
+            kw_txt = normalize_search_text(kw)
+            if kw_txt and kw_txt in signal_text:
+                points -= 35.0
+                reasons.append(f"exclusion:{kw_txt}")
+        for lbl in rule.get('model_labels', []):
+            lbl_txt = normalize_search_text(lbl)
+            for item in detected_labels or []:
+                det_label = normalize_search_text(item.get('label'))
+                if not det_label:
+                    continue
+                if lbl_txt == det_label or lbl_txt in det_label or det_label in lbl_txt:
+                    det_score = float(item.get('score') or 0.0)
+                    points += 16.0 + (det_score * 20.0)
+                    reasons.append(f"vision:{det_label}")
+                    break
+        ranked.append({
+            'key': rule.get('key') or '',
+            'label': rule.get('label') or '',
+            'points': round(points, 4),
+            'reasons': reasons[:10],
+        })
+
+    ranked.sort(key=lambda x: x['points'], reverse=True)
+    best = ranked[0] if ranked else None
+
+    if not best or best['points'] <= 0:
+        return {
+            'key': '',
+            'label': 'Sin clasificar',
+            'confidence': 0,
+            'reasons': [],
+            'detected_labels': [x for x in label_tokens if x],
+            'ranked': ranked[:3],
+            'candidate_keys': [],
+        }
+
+    confidence = min(99, int(round(best['points'])))
+    candidate_keys = [best['key']] if best.get('key') else []
+    if len(ranked) > 1 and ranked[1].get('points', 0) > 0:
+        delta = best['points'] - ranked[1]['points']
+        # Si dos tipos son cercanos, habilita ambos para evitar perder candidatos del tipo real.
+        if delta <= 12 and ranked[1].get('key'):
+            candidate_keys.append(ranked[1]['key'])
+
+    return {
+        'key': best['key'],
+        'label': best['label'],
+        'confidence': confidence,
+        'reasons': best['reasons'][:8],
+        'detected_labels': [x for x in label_tokens if x],
+        'ranked': ranked[:3],
+        'candidate_keys': candidate_keys,
+    }
+
+
+def extract_text_signals_from_image(file_bytes):
+    result = {
+        'ocr_text': '',
+        'ocr_tokens': [],
+        'serial_candidates': [],
+        'ocr_engine': 'none',
+        'ocr_available': False,
+    }
+    if not file_bytes:
+        return result
+
+    try:
+        import pytesseract
+        from PIL import ImageOps, ImageEnhance
+    except Exception:
+        return result
+
+    try:
+        img = PILImage.open(BytesIO(file_bytes))
+        img.load()
+    except Exception:
+        return result
+
+    variants = []
+    try:
+        base = img.convert('RGB')
+        variants.append(base)
+        gray = ImageOps.grayscale(base)
+        variants.append(gray)
+        sharp = ImageEnhance.Sharpness(gray).enhance(1.8)
+        variants.append(sharp)
+        high = ImageEnhance.Contrast(gray).enhance(2.0)
+        variants.append(high)
+    except Exception:
+        variants = [img]
+
+    best_txt = ''
+    for variant in variants[:4]:
+        try:
+            txt = pytesseract.image_to_string(variant, lang='eng+spa')
+        except Exception:
+            try:
+                txt = pytesseract.image_to_string(variant)
+            except Exception:
+                txt = ''
+        if len(txt or '') > len(best_txt):
+            best_txt = txt or ''
+
+    clean_text = best_txt.strip()
+    if not clean_text:
+        return result
+
+    serials = re.findall(r'[A-Z0-9\-]{6,}', str(clean_text).upper())
+    serial_candidates = []
+    seen = set()
+    for token in serials:
+        t = token.strip().upper()
+        if not t or t in seen:
+            continue
+        seen.add(t)
+        serial_candidates.append(t)
+
+    result['ocr_text'] = clean_text[:4000]
+    result['ocr_tokens'] = tokenize_search_text(clean_text)
+    result['serial_candidates'] = serial_candidates[:20]
+    result['ocr_engine'] = 'pytesseract'
+    result['ocr_available'] = True
+    return result
+
+
+def build_asset_assist_text_blob(asset):
+    values = [
+        asset.c_act, asset.nom, asset.nom_fam, asset.desc_tiac, asset.desc_subtiac,
+        asset.modelo, asset.ref, asset.serie, asset.nom_marca, asset.nom_ccos, asset.des_ubi,
+    ]
+    return normalize_search_text(' '.join(str(v or '') for v in values))
+
+
+def _similarity_ratio(left, right):
+    a = normalize_search_text(left)
+    b = normalize_search_text(right)
+    if not a or not b:
+        return 0.0
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def score_asset_assisted_candidate(asset, category_info, ocr_tokens, serial_candidates, service_hint, location_hint):
+    score = 0.0
+    reasons = []
+    blob = build_asset_assist_text_blob(asset)
+    category_key = category_info.get('key') if category_info else ''
+    category_conf = to_number(category_info.get('confidence') if category_info else 0)
+    candidate_keys = category_info.get('candidate_keys') if category_info else []
+    if not isinstance(candidate_keys, list):
+        candidate_keys = []
+
+    category_alignment = 0.0
+    if category_key:
+        for key in candidate_keys or [category_key]:
+            rule = get_assist_rule(key)
+            if not rule:
+                continue
+            include_hits, exclude_hits = category_keyword_matches(blob, rule)
+            align_points = (len(include_hits) * 24.0) - (len(exclude_hits) * 30.0)
+            if align_points > category_alignment:
+                category_alignment = align_points
+            if include_hits:
+                score += min(60.0, 30.0 + len(include_hits) * 8.0)
+                reasons.append(f"tipo:{rule.get('key')}:{include_hits[0]}")
+            if exclude_hits:
+                score -= min(80.0, 24.0 + len(exclude_hits) * 14.0)
+                reasons.append(f"descarta:{rule.get('key')}:{exclude_hits[0]}")
+
+    for token in (ocr_tokens or [])[:40]:
+        if token in blob:
+            score += 4.0
+            reasons.append(f"ocr:{token}")
+
+    serial_fields = [asset.serie, asset.ref, asset.modelo, asset.c_act]
+    serial_blob = normalize_search_text(' '.join(str(v or '') for v in serial_fields))
+    for serial in serial_candidates or []:
+        serial_txt = normalize_search_text(serial)
+        if not serial_txt:
+            continue
+        if serial_txt in serial_blob:
+            score += 55.0
+            reasons.append(f"serial:{serial_txt}")
+
+    svc = str(service_hint or '').strip()
+    if svc:
+        svc_norm = normalize_search_text(svc)
+        if svc_norm and svc_norm == normalize_search_text(asset.nom_ccos):
+            score += 16.0
+            reasons.append('servicio:exacto')
+        elif svc_norm and svc_norm in normalize_search_text(asset.nom_ccos):
+            score += 9.0
+            reasons.append('servicio:parcial')
+
+    loc = str(location_hint or '').strip()
+    if loc:
+        loc_norm = normalize_search_text(loc)
+        if loc_norm:
+            ratio = _similarity_ratio(loc_norm, asset.des_ubi or '')
+            if ratio >= 0.85:
+                score += 12.0
+                reasons.append('ubicacion:alta')
+            elif ratio >= 0.65:
+                score += 7.0
+                reasons.append('ubicacion:media')
+
+    # En detecciones con confianza alta, forzar coherencia de tipo para reducir falsos positivos.
+    if category_key and category_conf >= 55 and category_alignment < 1:
+        score -= 70.0
+        reasons.append('penalizacion:tipo_incompatible')
+
+    # Prioriza activos de mayor impacto economico para acelerar decision operativa.
+    value_weight = min(max(to_number(asset.costo), 0.0), 30000000.0) / 30000000.0
+    score += value_weight * 4.0
+    return score, reasons[:10]
+
+
+def build_asset_assisted_candidates(max_candidates, category_info, ocr_tokens, serial_candidates, service_hint, location_hint):
+    query = Asset.query.filter(Asset.estado_inventario == 'No encontrado')
+    rows = query.limit(5000).all()
+
+    scored = []
+    for asset in rows:
+        score, reasons = score_asset_assisted_candidate(
+            asset=asset,
+            category_info=category_info,
+            ocr_tokens=ocr_tokens,
+            serial_candidates=serial_candidates,
+            service_hint=service_hint,
+            location_hint=location_hint,
+        )
+        if score <= -45:
+            continue
+        scored.append((score, reasons, asset))
+
+    scored.sort(key=lambda x: (x[0], to_number(x[2].costo), x[2].id), reverse=True)
+    limit = max(1, min(max_candidates, 40))
+    top = scored[:limit]
+
+    # Si el tipo ya fue detectado y faltan candidatos, completa con activos del mismo tipo
+    # aunque tengan evidencia OCR baja, para no ocultar opciones reales.
+    if len(top) < limit and category_info and category_info.get('key'):
+        need = limit - len(top)
+        candidate_keys = category_info.get('candidate_keys') or [category_info.get('key')]
+        supplemental = []
+        for asset in rows:
+            code = str(asset.c_act or '').strip()
+            if not code or any(code == str(t[2].c_act or '').strip() for t in top):
+                continue
+            blob = build_asset_assist_text_blob(asset)
+            for key in candidate_keys:
+                rule = get_assist_rule(key)
+                if not rule:
+                    continue
+                include_hits, exclude_hits = category_keyword_matches(blob, rule)
+                if include_hits and not exclude_hits:
+                    supplemental.append((0.5, [f"relleno_tipo:{key}"], asset))
+                    break
+            if len(supplemental) >= need:
+                break
+        top.extend(supplemental[:need])
+        top.sort(key=lambda x: (x[0], to_number(x[2].costo), x[2].id), reverse=True)
+
+    out = []
+    for score, reasons, asset in top:
+        out.append({
+            'score': round(score, 2),
+            'match_reasons': reasons,
+            'asset': {
+                'codigo': asset.c_act or '',
+                'descripcion': asset.nom or '',
+                'familia': asset.nom_fam or '',
+                'marca': asset.nom_marca or '',
+                'modelo': asset.modelo or '',
+                'serial_ref': asset.serie or asset.ref or '',
+                'servicio': asset.nom_ccos or '',
+                'ubicacion': asset.des_ubi or '',
+                'responsable': asset.nom_resp or '',
+                'estado_inventario': asset.estado_inventario or '',
+                'costo': round(to_number(asset.costo), 2),
+            }
+        })
+    return out, len(rows)
+
+
+def _token_matches_all(tokens, text_blob):
+    if not tokens:
+        return True
+    blob = normalize_search_text(text_blob)
+    return all(tok in blob for tok in tokens)
+
+
+def build_quick_lookup_candidates(rule_key, service_hint, location_hint, query_text, technical_text, limit):
+    query = Asset.query.filter(Asset.estado_inventario == 'No encontrado')
+    rows = query.limit(8000).all()
+    rule = get_assist_rule(rule_key) if rule_key else None
+    query_tokens = tokenize_search_text(query_text)
+    technical_tokens = tokenize_search_text(technical_text)
+
+    filtered = []
+    svc_filter = normalize_search_text(service_hint)
+    loc_filter = normalize_search_text(location_hint)
+
+    for asset in rows:
+        blob = build_asset_assist_text_blob(asset)
+        reasons = []
+        include_hits = []
+        exclude_hits = []
+
+        if rule:
+            include_hits, exclude_hits = category_keyword_matches(blob, rule)
+            # Modo filtro estricto: si se define tipo, debe coincidir con ese tipo.
+            if (not include_hits) or exclude_hits:
+                continue
+            reasons.append(f"tipo:{include_hits[0]}")
+
+        if svc_filter:
+            asset_svc = normalize_search_text(asset.nom_ccos)
+            if svc_filter != asset_svc and svc_filter not in asset_svc:
+                continue
+            reasons.append('servicio')
+
+        if loc_filter:
+            asset_loc = normalize_search_text(asset.des_ubi)
+            if loc_filter != asset_loc and loc_filter not in asset_loc:
+                continue
+            reasons.append('ubicacion')
+
+        # Para filtros por texto, exige que TODOS los tokens aparezcan (estilo Excel contiene).
+        if query_tokens and not _token_matches_all(query_tokens, blob):
+            continue
+        if query_tokens:
+            reasons.append('descripcion')
+
+        technical_blob = normalize_search_text(' '.join([
+            str(asset.nom_marca or ''),
+            str(asset.modelo or ''),
+            str(asset.serie or ''),
+            str(asset.ref or ''),
+            str(asset.c_act or ''),
+        ]))
+        if technical_tokens and not _token_matches_all(technical_tokens, technical_blob):
+            continue
+        if technical_tokens:
+            reasons.append('tecnico')
+
+        # Orden simple: mas filtros cumplidos primero, luego costo y codigo.
+        score = float(len(reasons))
+        filtered.append((score, reasons, asset))
+
+    filtered.sort(key=lambda x: (x[0], to_number(x[2].costo), str(x[2].c_act or '')), reverse=True)
+    requested = max(10, min(parse_int(limit, default=30) or 30, 80))
+    top = filtered[:requested]
+
+    out = []
+    for score, reasons, asset in top[:requested]:
+        out.append({
+            'score': round(score, 2),
+            'type_match': bool(rule_key),
+            'match_reasons': reasons[:8],
+            'asset': {
+                'codigo': asset.c_act or '',
+                'descripcion': asset.nom or '',
+                'familia': asset.nom_fam or '',
+                'tipo': asset.desc_tiac or '',
+                'subtipo': asset.desc_subtiac or '',
+                'marca': asset.nom_marca or '',
+                'modelo': asset.modelo or '',
+                'serial_ref': asset.serie or asset.ref or '',
+                'servicio': asset.nom_ccos or '',
+                'ubicacion': asset.des_ubi or '',
+                'responsable': asset.nom_resp or '',
+                'estado_inventario': asset.estado_inventario or '',
+                'costo': round(to_number(asset.costo), 2),
+            }
+        })
+    return out, len(rows)
+
+
 def build_asset_life_sheet_payload(asset, matched_by='C_ACT'):
     payload = asset_raw_payload(asset)
     codigo_inteligente = _pick_first_value(payload, [
@@ -7068,6 +7646,45 @@ def asset_life_sheet():
     if not asset:
         return jsonify({'error': 'Activo no encontrado'}), 404
     return jsonify({'item': build_asset_life_sheet_payload(asset, matched_by)})
+
+
+@app.route('/asset_life_sheet/quick_lookup', methods=['POST'])
+def asset_life_sheet_quick_lookup():
+    ensure_db()
+    payload = request.get_json(silent=True) or {}
+    category_key = str(payload.get('category_key') or '').strip()
+    service_hint = str(payload.get('service_hint') or '').strip()
+    location_hint = str(payload.get('location_hint') or '').strip()
+    query_text = str(payload.get('query_text') or '').strip()
+    technical_text = str(payload.get('technical_text') or '').strip()
+    limit = parse_int(payload.get('limit'), default=30) or 30
+
+    if not any([category_key, service_hint, location_hint, query_text, technical_text]):
+        return jsonify({'error': 'Debes indicar al menos un criterio de busqueda'}), 400
+
+    candidates, pool_size = build_quick_lookup_candidates(
+        rule_key=category_key,
+        service_hint=service_hint,
+        location_hint=location_hint,
+        query_text=query_text,
+        technical_text=technical_text,
+        limit=limit,
+    )
+    rule = get_assist_rule(category_key) if category_key else None
+    return jsonify({
+        'analysis': {
+            'category_key': category_key,
+            'category_label': (rule.get('label') if rule else ''),
+            'service_hint': service_hint,
+            'location_hint': location_hint,
+            'query_text': query_text,
+            'technical_text': technical_text,
+            'not_found_only': True,
+            'not_found_pool_size': pool_size,
+            'returned_candidates': len(candidates),
+        },
+        'candidates': candidates,
+    })
 
 
 @app.route('/asset_life_sheet/pdf', methods=['GET'])

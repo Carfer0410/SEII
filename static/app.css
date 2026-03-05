@@ -2558,6 +2558,74 @@ tbody tr:hover {
   margin-top: 8px;
 }
 
+.life-assist-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.life-assist-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 700;
+  color: #0f4e75;
+}
+
+.life-assist-actions {
+  margin-top: 10px;
+}
+
+.life-assist-image-empty,
+.life-assist-image {
+  margin-top: 10px;
+  border: 1px dashed #c2d9ea;
+  border-radius: 10px;
+  background: #f8fbff;
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  color: #3d5d75;
+  font-weight: 600;
+  text-align: center;
+  padding: 8px;
+}
+
+.life-assist-image img {
+  max-width: min(520px, 100%);
+  max-height: 280px;
+  border-radius: 8px;
+  border: 1px solid #d4e4f0;
+}
+
+.life-assist-candidates {
+  margin-top: 12px;
+}
+
+.life-assist-summary {
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid #d5e5f2;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #fafdff 0%, #f2f8fd 100%);
+  color: #1f4f6c;
+  font-size: 13px;
+  font-weight: 600;
+  display: grid;
+  gap: 4px;
+}
+
+.life-assist-empty {
+  border: 1px dashed #bfd6e7;
+  border-radius: 10px;
+  background: #f5fbff;
+  color: #38596f;
+  padding: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
 .life-sheet-empty {
   min-height: 120px;
   border: 1px dashed #bcd6e8;
@@ -3009,6 +3077,10 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 
+  .life-assist-grid {
+    grid-template-columns: 1fr;
+  }
+
   .docs-table th:nth-child(10),
   .docs-table td:nth-child(10) {
     width: 168px;
@@ -3085,6 +3157,37 @@ tbody tr:hover {
   padding: 0 12px;
   font-size: 11px;
   border-radius: 8px;
+}
+
+/* Bajas: modales de gestion/reclasificacion compactos */
+#disposalManageOverlay .app-confirm-card,
+#disposalTypeEditOverlay .app-confirm-card,
+#disposalDeleteConfirmOverlay .app-confirm-card {
+  width: min(520px, 100%);
+}
+
+#disposalManageOverlay .app-confirm-actions,
+#disposalTypeEditOverlay .app-confirm-actions,
+#disposalDeleteConfirmOverlay .app-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+#disposalManageOverlay .app-confirm-actions .mini-btn,
+#disposalTypeEditOverlay .app-confirm-actions .mini-btn,
+#disposalDeleteConfirmOverlay .app-confirm-actions .mini-btn {
+  min-width: 0;
+  min-height: 28px;
+  height: 28px;
+  width: auto;
+  max-width: 100%;
+  padding: 0 9px;
+  font-size: 11px;
+  border-radius: 7px;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 /* ---------------------------------------------------- */
@@ -3197,6 +3300,14 @@ video {
     min-width: 0 !important;
     width: 100%;
     max-width: 100%;
+  }
+
+  #disposalManageOverlay .app-confirm-actions .mini-btn,
+  #disposalTypeEditOverlay .app-confirm-actions .mini-btn,
+  #disposalDeleteConfirmOverlay .app-confirm-actions .mini-btn {
+    width: auto !important;
+    min-width: 0 !important;
+    flex: 0 1 auto;
   }
 
   .kpi-grid,

@@ -4,10 +4,16 @@
 
 {% block content %}
   <div class="stack module-screen">
-    <div class="card report-hero">
-      <div>
-        <h3>Generador de hoja de vida</h3>
-        <p>Escribe o escanea el codigo del activo para visualizar su ficha y generar PDF institucional.</p>
+    <div class="card report-hero reports-shell">
+      <div class="reports-shell-head">
+        <div>
+          <h3>Generador de hoja de vida</h3>
+          <p>Escribe o escanea el codigo del activo para visualizar su ficha y generar PDF institucional.</p>
+        </div>
+        <div class="reports-switcher" role="tablist" aria-label="Modulo hoja de vida">
+          <button type="button" class="reports-tab active" id="lifeTabSheetBtn" data-life-tab="sheet" role="tab" aria-selected="true">Hoja de vida</button>
+          <button type="button" class="reports-tab" id="lifeTabAssistBtn" data-life-tab="assist" role="tab" aria-selected="false">Identificacion asistida</button>
+        </div>
       </div>
       <div class="hero-badges">
         <span class="badge">Consulta por codigo</span>
@@ -16,32 +22,87 @@
       </div>
     </div>
 
-    <div class="card">
-      <h3>Busqueda de activo</h3>
-      <div class="row life-row">
-        <input id="lifeCodeInput" placeholder="Codigo de activo (ej. 6007005 o codigo de barras)" />
-        <button id="lifeSearchBtn" type="button">Buscar activo</button>
-        <button id="lifePdfBtn" type="button" class="mini-btn" disabled>Descargar PDF</button>
-      </div>
-      <div class="life-camera-box">
-        <label>Camara (alternativa de escaneo)</label>
-        <div id="lifeReader"></div>
-        <div class="row life-camera-actions">
-          <button id="lifeStartCameraBtn" type="button">Iniciar camara</button>
-          <button id="lifeStopCameraBtn" type="button" class="mini-btn" disabled>Detener camara</button>
+    <div class="reports-shell">
+      <section id="lifePanelSheet" class="report-panel active" role="tabpanel" aria-labelledby="lifeTabSheetBtn">
+        <div class="card">
+          <h3>Busqueda de activo</h3>
+          <div class="row life-row">
+            <input id="lifeCodeInput" placeholder="Codigo de activo (ej. 6007005 o codigo de barras)" />
+            <button id="lifeSearchBtn" type="button">Buscar activo</button>
+            <button id="lifePdfBtn" type="button" class="mini-btn" disabled>Descargar PDF</button>
+          </div>
+          <div class="life-camera-box">
+            <label>Camara (alternativa de escaneo)</label>
+            <div id="lifeReader"></div>
+            <div class="row life-camera-actions">
+              <button id="lifeStartCameraBtn" type="button">Iniciar camara</button>
+              <button id="lifeStopCameraBtn" type="button" class="mini-btn" disabled>Detener camara</button>
+            </div>
+            <div class="field-help">
+              Al detectar un codigo, se consulta automaticamente la hoja de vida para habilitar la descarga PDF.
+            </div>
+          </div>
+          <div id="lifeStatus" class="status"></div>
         </div>
-        <div class="field-help">
-          Al detectar un codigo, se consulta automaticamente la hoja de vida para habilitar la descarga PDF.
-        </div>
-      </div>
-      <div id="lifeStatus" class="status"></div>
-    </div>
 
-    <div class="card">
-      <h3>Vista previa hoja de vida</h3>
-      <div id="lifeSheetPreview" class="life-sheet-empty">
-        Ingresa un codigo para consultar la hoja de vida del activo.
-      </div>
+        <div class="card">
+          <h3>Vista previa hoja de vida</h3>
+          <div id="lifeSheetPreview" class="life-sheet-empty">
+            Ingresa un codigo para consultar la hoja de vida del activo.
+          </div>
+        </div>
+      </section>
+
+      <section id="lifePanelAssist" class="report-panel" role="tabpanel" aria-labelledby="lifeTabAssistBtn">
+        <div class="card">
+          <h3>Identificacion rapida sin codigo</h3>
+          <p class="field-help">
+            Usa criterios operativos para encontrar en segundos activos similares. La busqueda filtra exclusivamente activos en estado <strong>No encontrado</strong>.
+          </p>
+          <div class="life-assist-grid life-assist-grid-quick">
+            <label>
+              Tipo de activo
+              <select id="lifeQuickCategory">
+                <option value="">-- Selecciona tipo --</option>
+                {% for c in assist_categories %}
+                  <option value="{{ c.key }}">{{ c.label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Servicio (opcional)
+              <input id="lifeQuickServiceHint" placeholder="Ej: URGENCIAS" />
+            </label>
+            <label>
+              Ubicacion (opcional)
+              <input id="lifeQuickLocationHint" placeholder="Ej: Consultorio 2" />
+            </label>
+            <label>
+              Descripcion visible (opcional)
+              <input id="lifeQuickQueryText" placeholder="Ej: monitor signos con base rodable" />
+            </label>
+            <label>
+              Marca / modelo / serial parcial (opcional)
+              <input id="lifeQuickTechnicalText" placeholder="Ej: mindray uMEC 12, SN parcial" />
+            </label>
+            <label>
+              Cantidad de candidatos
+              <select id="lifeQuickLimit">
+                <option value="20">20</option>
+                <option value="30" selected>30</option>
+                <option value="50">50</option>
+              </select>
+            </label>
+          </div>
+          <div class="row life-assist-actions">
+            <button id="lifeQuickSearchBtn" type="button">Buscar candidatos</button>
+          </div>
+          <div id="lifeQuickStatus" class="status"></div>
+          <div id="lifeQuickCandidates" class="life-assist-candidates">
+            Define criterios para iniciar busqueda rapida de candidatos.
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 {% endblock %}

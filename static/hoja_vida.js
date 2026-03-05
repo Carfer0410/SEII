@@ -6,12 +6,27 @@ document.addEventListener('DOMContentLoaded', () => {
   const previewEl = document.getElementById('lifeSheetPreview');
   const startCameraBtn = document.getElementById('lifeStartCameraBtn');
   const stopCameraBtn = document.getElementById('lifeStopCameraBtn');
+  const tabSheetBtn = document.getElementById('lifeTabSheetBtn');
+  const tabAssistBtn = document.getElementById('lifeTabAssistBtn');
+  const panelSheet = document.getElementById('lifePanelSheet');
+  const panelAssist = document.getElementById('lifePanelAssist');
+
+  const quickCategoryInput = document.getElementById('lifeQuickCategory');
+  const quickServiceInput = document.getElementById('lifeQuickServiceHint');
+  const quickLocationInput = document.getElementById('lifeQuickLocationHint');
+  const quickQueryInput = document.getElementById('lifeQuickQueryText');
+  const quickTechnicalInput = document.getElementById('lifeQuickTechnicalText');
+  const quickLimitInput = document.getElementById('lifeQuickLimit');
+  const quickSearchBtn = document.getElementById('lifeQuickSearchBtn');
+  const quickStatusEl = document.getElementById('lifeQuickStatus');
+  const quickCandidatesEl = document.getElementById('lifeQuickCandidates');
 
   let currentCode = '';
   let scanner = null;
   let scanBusy = false;
   let lastDecoded = '';
   let lastDecodedAt = 0;
+  let currentTab = 'sheet';
 
   function readCode() {
     return String(codeInput?.value || '').trim();
@@ -26,11 +41,28 @@ document.addEventListener('DOMContentLoaded', () => {
     return false;
   }
 
+  async function setLifeTab(nextTab) {
+    const tab = nextTab === 'assist' ? 'assist' : 'sheet';
+    currentTab = tab;
+    const isSheet = tab === 'sheet';
+    tabSheetBtn?.classList.toggle('active', isSheet);
+    tabAssistBtn?.classList.toggle('active', !isSheet);
+    panelSheet?.classList.toggle('active', isSheet);
+    panelAssist?.classList.toggle('active', !isSheet);
+    if (tabSheetBtn) tabSheetBtn.setAttribute('aria-selected', isSheet ? 'true' : 'false');
+    if (tabAssistBtn) tabAssistBtn.setAttribute('aria-selected', isSheet ? 'false' : 'true');
+    if (!isSheet) await stopCamera();
+  }
+
   function row(label, value) {
     return `
       <div class="life-cell life-label">${App.escapeHtml(label)}</div>
       <div class="life-cell life-value">${App.escapeHtml(String(value || '-'))}</div>
     `;
+  }
+
+  function money(value) {
+    return Number(value || 0).toLocaleString('es-CO', { maximumFractionDigits: 2 });
   }
 
   function renderPreview(item) {
@@ -64,9 +96,9 @@ document.addEventListener('DOMContentLoaded', () => {
         ${row('Estado', item.estado)}
         ${row('Condicion', item.condicion)}
         ${row('Metodo depreciacion', item.metodo_deprec)}
-        ${row('Costo del activo', Number(item.costo_activo || 0).toLocaleString('es-CO'))}
-        ${row('Saldo', Number(item.saldo || 0).toLocaleString('es-CO'))}
-        ${row('Total activo', Number(item.total_activo || 0).toLocaleString('es-CO'))}
+        ${row('Costo del activo', money(item.costo_activo))}
+        ${row('Saldo', money(item.saldo))}
+        ${row('Total activo', money(item.total_activo))}
         ${row('Responsable', item.responsable)}
         ${row('Ubicacion', item.ubicacion)}
         ${row('Centro de costo', item.centro_costo)}
@@ -124,16 +156,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function stopCamera() {
     if (!scanner) return;
-    try {
-      await scanner.stop();
-    } catch (_) {
-      // Ignorar si ya estaba detenida.
-    }
-    try {
-      await scanner.clear();
-    } catch (_) {
-      // Ignorar limpieza fallida del componente.
-    }
+    try { await scanner.stop(); } catch (_) {}
+    try { await scanner.clear(); } catch (_) {}
     scanner = null;
     if (startCameraBtn) startCameraBtn.disabled = false;
     if (stopCameraBtn) stopCameraBtn.disabled = true;
@@ -195,7 +219,79 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function renderQuickCandidates(payload) {
+    if (!quickCandidatesEl) return;
+    const analysis = payload?.analysis || {};
+    const candidates = payload?.candidates || [];
+    if (!candidates.length) {
+      quickCandidatesEl.innerHTML = '<div class="life-assist-empty">No se encontraron candidatos con estos criterios.</div>';
+      return;
+    }
+    quickCandidatesEl.innerHTML = `
+      <div class="life-assist-summary">
+        <div><strong>Tipo:</strong> ${App.escapeHtml(analysis.category_label || 'Sin tipo especifico')}</div>
+        <div><strong>Pool no encontrados:</strong> ${App.escapeHtml(String(analysis.not_found_pool_size || 0))}</div>
+        <div><strong>Candidatos devueltos:</strong> ${App.escapeHtml(String(analysis.returned_candidates || 0))}</div>
+      </div>
+      <div class="history-table-wrap">
+        <table class="report-history-table compact-table life-assist-table">
+          <thead>
+            <tr>
+              <th>#</th><th>CODIGO</th><th>DESCRIPCION</th><th>SERVICIO</th><th>UBICACION</th><th>ESTADO</th><th>SCORE</th><th>ACCION</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${candidates.map((row, idx) => {
+              const a = row.asset || {};
+              return `
+                <tr>
+                  <td>${idx + 1}</td>
+                  <td>${App.escapeHtml(a.codigo || '')}</td>
+                  <td class="cell-clip" title="${App.escapeHtml(a.descripcion || '')}">${App.escapeHtml(a.descripcion || '')}</td>
+                  <td>${App.escapeHtml(a.servicio || '-')}</td>
+                  <td class="cell-clip" title="${App.escapeHtml(a.ubicacion || '')}">${App.escapeHtml(a.ubicacion || '-')}</td>
+                  <td>${App.escapeHtml(a.estado_inventario || '-')}</td>
+                  <td>${App.escapeHtml(String(row.score || 0))}</td>
+                  <td><button type="button" class="mini-btn" data-life-candidate-code="${App.escapeHtml(a.codigo || '')}">Usar</button></td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  async function quickLookup() {
+    const body = {
+      category_key: String(quickCategoryInput?.value || '').trim(),
+      service_hint: String(quickServiceInput?.value || '').trim(),
+      location_hint: String(quickLocationInput?.value || '').trim(),
+      query_text: String(quickQueryInput?.value || '').trim(),
+      technical_text: String(quickTechnicalInput?.value || '').trim(),
+      limit: Number(quickLimitInput?.value || 30),
+    };
+    if (!body.category_key && !body.service_hint && !body.location_hint && !body.query_text && !body.technical_text) {
+      App.setStatus(quickStatusEl, 'Indica al menos un criterio para buscar.', true);
+      return;
+    }
+    try {
+      App.setStatus(quickStatusEl, 'Buscando candidatos similares en no encontrados...');
+      const payload = await App.post('/asset_life_sheet/quick_lookup', body);
+      renderQuickCandidates(payload);
+      const total = payload?.analysis?.returned_candidates || 0;
+      App.setStatus(quickStatusEl, `Busqueda completada. Candidatos: ${total}.`);
+    } catch (err) {
+      App.setStatus(quickStatusEl, err.message || 'No fue posible ejecutar la busqueda.', true);
+      if (quickCandidatesEl) {
+        quickCandidatesEl.innerHTML = '<div class="life-assist-empty">No fue posible generar candidatos.</div>';
+      }
+    }
+  }
+
   searchBtn?.addEventListener('click', () => searchAsset());
+  tabSheetBtn?.addEventListener('click', () => { setLifeTab('sheet'); });
+  tabAssistBtn?.addEventListener('click', () => { setLifeTab('assist'); });
   codeInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === 'NumpadEnter') {
       e.preventDefault();
@@ -213,5 +309,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   startCameraBtn?.addEventListener('click', () => startCamera());
   stopCameraBtn?.addEventListener('click', () => stopCamera());
+  quickSearchBtn?.addEventListener('click', () => quickLookup());
+
+  quickCandidatesEl?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-life-candidate-code]');
+    if (!btn) return;
+    const code = String(btn.getAttribute('data-life-candidate-code') || '').trim();
+    if (!code) return;
+    if (currentTab !== 'sheet') await setLifeTab('sheet');
+    if (codeInput) codeInput.value = code;
+    await searchAsset(code);
+    App.setStatus(quickStatusEl, `Activo seleccionado: ${code}. Hoja de vida cargada.`);
+  });
+
   window.addEventListener('beforeunload', () => { stopCamera(); });
+  setLifeTab('sheet');
 });

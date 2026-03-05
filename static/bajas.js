@@ -24,6 +24,20 @@ document.addEventListener('DOMContentLoaded', () => {
     { key: 'MUEBLE Y ENSER', title: 'Bajas Mueble y Enser' },
     { key: 'INDUSTRIAL', title: 'Bajas Industriales' },
     { key: 'TECNOLOGICO', title: 'Bajas Tecnologicos' },
+    { key: 'CONTROL - BIOMEDICO', title: 'Bajas Control - Biomedico', isControl: true, exactType: 'CONTROL - BIOMEDICO' },
+    { key: 'CONTROL - MUEBLE Y ENSER', title: 'Bajas Control - Mueble y Enser', isControl: true, exactType: 'CONTROL - MUEBLE Y ENSER' },
+    { key: 'CONTROL - INDUSTRIAL', title: 'Bajas Control - Industrial', isControl: true, exactType: 'CONTROL - INDUSTRIAL' },
+    { key: 'CONTROL - TECNOLOGICO', title: 'Bajas Control - Tecnologico', isControl: true, exactType: 'CONTROL - TECNOLOGICO' },
+  ];
+  const RECLASSIFY_TYPE_OPTIONS = [
+    'BIOMEDICO',
+    'MUEBLE Y ENSER',
+    'INDUSTRIAL',
+    'TECNOLOGICO',
+    'CONTROL - BIOMEDICO',
+    'CONTROL - MUEBLE Y ENSER',
+    'CONTROL - INDUSTRIAL',
+    'CONTROL - TECNOLOGICO',
   ];
 
   function formatMoney(value) {
@@ -37,24 +51,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function normalizeDisposalType(row) {
     const a = row.asset || {};
-    const invStatus = String(a.estado_inventario || '').toUpperCase().trim();
-    if (invStatus === 'ACTIVO DE CONTROL') return 'CONTROL - TECNOLOGICO';
-
     const raw = String(a.TIPO_ACTIVO || '').toUpperCase().trim();
-    if (raw.includes('CONTROL')) return raw;
+    if (raw.includes('CONTROL')) {
+      if (raw.includes('BIOMED')) return 'CONTROL - BIOMEDICO';
+      if (raw.includes('MUEBLE')) return 'CONTROL - MUEBLE Y ENSER';
+      if (raw.includes('INDUSTR')) return 'CONTROL - INDUSTRIAL';
+      if (raw.includes('TECNOLOG')) return 'CONTROL - TECNOLOGICO';
+      return 'CONTROL - TECNOLOGICO';
+    }
     if (raw.includes('BIOMED')) return 'BIOMEDICO';
     if (raw.includes('MUEBLE')) return 'MUEBLE Y ENSER';
     if (raw.includes('INDUSTR')) return 'INDUSTRIAL';
     return 'TECNOLOGICO';
-  }
-
-  function controlSubtypeLabel(typeKey) {
-    const raw = String(typeKey || '').toUpperCase();
-    if (raw.includes('BIOMED')) return 'BIOMEDICO';
-    if (raw.includes('MUEBLE')) return 'MUEBLE Y ENSER';
-    if (raw.includes('INDUSTR')) return 'INDUSTRIAL';
-    if (raw.includes('TECNOLOG')) return 'TECNOLOGICO';
-    return 'OTROS';
   }
 
   function renderDisposalsTable(items) {
@@ -156,6 +164,77 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function ensureTypeModal() {
+    let overlay = document.getElementById('disposalTypeEditOverlay');
+    if (overlay) return overlay;
+    overlay = document.createElement('div');
+    overlay.id = 'disposalTypeEditOverlay';
+    overlay.className = 'app-confirm-overlay';
+    overlay.hidden = true;
+    overlay.innerHTML = `
+      <div class="app-confirm-card" role="dialog" aria-modal="true" aria-labelledby="disposalTypeEditTitle">
+        <div class="app-confirm-head">
+          <h4 id="disposalTypeEditTitle">Reclasificar tipo de activo</h4>
+        </div>
+        <div id="disposalTypeEditBody" class="app-confirm-body"></div>
+        <label class="stack" style="margin-top:8px;">
+          <span>Tipo de activo</span>
+          <select id="disposalTypeEditSelect">
+            ${RECLASSIFY_TYPE_OPTIONS.map((t) => `<option value="${App.escapeHtml(t)}">${App.escapeHtml(t)}</option>`).join('')}
+          </select>
+        </label>
+        <div class="app-confirm-actions">
+          <button id="disposalTypeEditCancel" type="button" class="mini-btn app-confirm-cancel">Cancelar</button>
+          <button id="disposalTypeEditSave" type="button" class="mini-btn app-confirm-ok">Guardar tipo</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  function showTypeModal({ message = '', currentType = '' } = {}) {
+    return new Promise((resolve) => {
+      const overlay = ensureTypeModal();
+      const bodyEl = overlay.querySelector('#disposalTypeEditBody');
+      const selectEl = overlay.querySelector('#disposalTypeEditSelect');
+      const saveBtn = overlay.querySelector('#disposalTypeEditSave');
+      const cancelBtn = overlay.querySelector('#disposalTypeEditCancel');
+
+      const close = (result) => {
+        overlay.hidden = true;
+        document.removeEventListener('keydown', onKeydown);
+        overlay.removeEventListener('click', onOverlayClick);
+        saveBtn?.removeEventListener('click', onSave);
+        cancelBtn?.removeEventListener('click', onCancel);
+        resolve(result);
+      };
+
+      const onSave = () => close(String(selectEl?.value || '').trim());
+      const onCancel = () => close(null);
+      const onOverlayClick = (e) => {
+        if (e.target === overlay) close(null);
+      };
+      const onKeydown = (e) => {
+        if (e.key === 'Escape') close(null);
+      };
+
+      if (bodyEl) bodyEl.textContent = message || 'Selecciona el tipo correcto para mover el activo a la tabla correspondiente.';
+      if (selectEl) {
+        const normalizedCurrent = String(currentType || '').trim().toUpperCase();
+        const hasCurrent = RECLASSIFY_TYPE_OPTIONS.some((x) => x.toUpperCase() === normalizedCurrent);
+        selectEl.value = hasCurrent ? RECLASSIFY_TYPE_OPTIONS.find((x) => x.toUpperCase() === normalizedCurrent) : RECLASSIFY_TYPE_OPTIONS[0];
+      }
+
+      overlay.hidden = false;
+      saveBtn?.addEventListener('click', onSave);
+      cancelBtn?.addEventListener('click', onCancel);
+      overlay.addEventListener('click', onOverlayClick);
+      document.addEventListener('keydown', onKeydown);
+      setTimeout(() => selectEl?.focus({ preventScroll: true }), 0);
+    });
+  }
+
   function ensureManageModal() {
     if (manageOverlay) return manageOverlay;
     manageOverlay = document.getElementById('disposalManageOverlay');
@@ -172,6 +251,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <div id="disposalManageBody" class="app-confirm-body"></div>
         <div class="app-confirm-actions">
           <button id="disposalManageEdit" type="button" class="mini-btn app-confirm-ok">Editar motivo</button>
+          <button id="disposalManageReclassify" type="button" class="mini-btn app-confirm-ok">Reclasificar tipo</button>
           <button id="disposalManageRemove" type="button" class="mini-btn app-confirm-cancel">Eliminar de bajas</button>
           <button id="disposalManageClose" type="button" class="mini-btn app-confirm-cancel">Cerrar</button>
         </div>
@@ -187,6 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const titleEl = overlay.querySelector('#disposalManageTitle');
       const bodyEl = overlay.querySelector('#disposalManageBody');
       const editBtn = overlay.querySelector('#disposalManageEdit');
+      const reclassifyBtn = overlay.querySelector('#disposalManageReclassify');
       const removeBtn = overlay.querySelector('#disposalManageRemove');
       const closeBtn = overlay.querySelector('#disposalManageClose');
 
@@ -195,12 +276,14 @@ document.addEventListener('DOMContentLoaded', () => {
         document.removeEventListener('keydown', onKeydown);
         overlay.removeEventListener('click', onOverlayClick);
         editBtn?.removeEventListener('click', onEdit);
+        reclassifyBtn?.removeEventListener('click', onReclassify);
         removeBtn?.removeEventListener('click', onRemove);
         closeBtn?.removeEventListener('click', onClose);
         resolve(result);
       };
 
       const onEdit = () => close('edit_reason');
+      const onReclassify = () => close('reclassify_type');
       const onRemove = () => close('remove_disposal');
       const onClose = () => close(null);
       const onOverlayClick = (e) => {
@@ -215,6 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       overlay.hidden = false;
       editBtn?.addEventListener('click', onEdit);
+      reclassifyBtn?.addEventListener('click', onReclassify);
       removeBtn?.addEventListener('click', onRemove);
       closeBtn?.addEventListener('click', onClose);
       overlay.addEventListener('click', onOverlayClick);
@@ -295,29 +379,16 @@ document.addEventListener('DOMContentLoaded', () => {
       acc[section.key] = [];
       return acc;
     }, {});
-    const controlGroups = {};
 
     (items || []).forEach((row) => {
       const bucket = normalizeDisposalType(row);
-      if (String(bucket).includes('CONTROL')) {
-        if (!controlGroups[bucket]) controlGroups[bucket] = [];
-        controlGroups[bucket].push(row);
-      } else {
-        if (!groups[bucket]) groups[bucket] = [];
-        groups[bucket].push(row);
-      }
+      if (!groups[bucket]) groups[bucket] = [];
+      groups[bucket].push(row);
     });
-
-    const controlSections = Object.keys(controlGroups).sort().map((key) => ({
-      key,
-      title: `Bajas Control - ${controlSubtypeLabel(key)}`,
-      isControl: true,
-      exactType: key,
-    }));
-    const sections = BASE_SECTIONS.concat(controlSections);
+    const sections = BASE_SECTIONS;
 
     return sections.map((section) => {
-      const rows = section.isControl ? (controlGroups[section.key] || []) : (groups[section.key] || []);
+      const rows = groups[section.key] || [];
       const totalCost = rows.reduce((acc, r) => acc + Number((r.asset || {}).COSTO || 0), 0);
       const totalSaldo = rows.reduce((acc, r) => acc + Number((r.asset || {}).SALDO || 0), 0);
       const body = rows.length
@@ -442,9 +513,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const code = String(row?.asset?.C_ACT || '').trim();
       const desc = String(row?.asset?.NOM || '').trim();
       const currentReason = String(row?.reason || '').trim();
+      const currentType = String(row?.asset?.TIPO_ACTIVO || '').trim();
       showManageModal({
         title: 'Editar baja',
-        message: `Activo: ${code}${desc ? ` - ${desc}` : ''}`,
+        message: `Activo: ${code}${desc ? ` - ${desc}` : ''}\nTipo actual: ${currentType || 'Sin clasificar'}`,
       }).then(async (action) => {
         if (!action) return;
         if (action === 'edit_reason') {
@@ -458,6 +530,21 @@ document.addEventListener('DOMContentLoaded', () => {
             await App.patch(`/disposals/${disposalId}`, { reason });
             await loadDisposals();
             App.setStatus(statusEl, `Motivo actualizado para activo ${code || disposalId}.`);
+          } catch (err) {
+            App.setStatus(statusEl, err.message, true);
+          }
+          return;
+        }
+        if (action === 'reclassify_type') {
+          const selectedType = await showTypeModal({
+            message: `Activo: ${code}${desc ? ` - ${desc}` : ''}`,
+            currentType,
+          });
+          if (!selectedType) return;
+          try {
+            await App.patch(`/disposals/${disposalId}`, { type_override: selectedType });
+            await loadDisposals();
+            App.setStatus(statusEl, `Activo ${code || disposalId} reclasificado a ${selectedType}.`);
           } catch (err) {
             App.setStatus(statusEl, err.message, true);
           }
