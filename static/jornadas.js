@@ -870,9 +870,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await App.post(`/runs/${id}/close`, {
         user: "usuario_movil",
       });
-      await loadClosedServicesForCreatePeriod();
-      await loadRunsView(data.run.id);
-      await refreshSummary();
+      const refreshTasks = await Promise.allSettled([
+        loadClosedServicesForCreatePeriod(),
+        loadRunsView(data.run.id),
+        refreshSummary(),
+      ]);
+      const refreshFailed = refreshTasks.some((task) => task.status === "rejected");
       // Modal de éxito reutilizando el estilo de confirmación
       await showConfirmModal({
         title: "Jornada cerrada",
@@ -880,10 +883,18 @@ document.addEventListener("DOMContentLoaded", () => {
         okText: "Aceptar",
         cancelText: "",
       });
-      App.setStatus(
-        statusEl,
-        `Jornada cerrada. No encontrados auto: ${data.auto_marked_not_found}`,
-      );
+      if (refreshFailed) {
+        App.setStatus(
+          statusEl,
+          `Jornada cerrada. No encontrados auto: ${data.auto_marked_not_found}. Hubo un problema al refrescar la vista; recarga la pagina.`,
+          true,
+        );
+      } else {
+        App.setStatus(
+          statusEl,
+          `Jornada cerrada. No encontrados auto: ${data.auto_marked_not_found}`,
+        );
+      }
     } catch (err) {
       App.setStatus(statusEl, err.message, true);
       if (isBlockingWorkflowMessage(err.message)) {
